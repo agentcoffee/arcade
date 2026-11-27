@@ -12,11 +12,14 @@ from __future__ import annotations
 import copy
 import math
 import os
+import warnings
 from collections import OrderedDict
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
+import PIL.Image
+import PIL.ImageChops
 import pytiled_parser
 import pytiled_parser.tiled_object
 from pytiled_parser import Color
@@ -32,7 +35,6 @@ from arcade import (
     hexagon,
 )
 from arcade.hitbox import HitBoxAlgorithm, RotatableHitBox
-from arcade.types import RGBA255
 from arcade.types import Color as ArcadeColor
 
 if TYPE_CHECKING:
@@ -110,6 +112,21 @@ def _get_image_source(
     return None
 
 
+def _make_color_transparent(image: PIL.Image.Image, color: Color) -> None:
+    """
+    Make the pixels of an RGBA image that have a color transparent, in place.
+
+    Pixels whose red, green and blue match the color become transparent
+    white. Their alpha doesn't matter, as in Tiled's ``transparentcolor``.
+    """
+    # Pixels that match the color in each band, combined into one mask
+    mask = None
+    for band, value in zip(image.split()[:3], color[:3]):
+        matches = band.point(lambda pixel, value=value: 255 if pixel == value else 0, mode="1")
+        mask = matches if mask is None else PIL.ImageChops.logical_and(mask, matches)
+    image.paste((255, 255, 255, 0), mask=mask)
+
+
 def _may_be_flip(tile: pytiled_parser.Tile, texture: Texture) -> Texture:
     if tile.flipped_diagonally:
         texture = texture.flip_diagonally()
@@ -133,10 +150,10 @@ class TileMap:
         layer_options:
             Extra parameters for each layer.
         use_spatial_hash:
-            If set to True, this will make moving a sprite
-            in the SpriteList slower, but it will speed up collision detection
-            with items in the SpriteList. Great for doing collision detection
-            with static walls/platforms.
+            Give each layer's SpriteList a spatial hash, which makes collision
+            checks against it much faster, and moving its sprites slower. On by
+            default. For a layer whose sprites move a lot, such as moving
+            platforms, turn it off in ``layer_options``.
         hit_box_algorithm:
             The hit box algorithm to use for the Sprite's in this layer.
         tiled_map:
@@ -163,6 +180,7 @@ class TileMap:
     The available options for this are:
 
     - ``use_spatial_hash`` - A boolean to enable spatial hashing on this layer's SpriteList.
+      On by default. Turn it off for a layer whose sprites move a lot.
     - ``scaling`` - A float providing layer specific Sprite scaling.
     - ``hit_box_algorithm`` - The hit box algorithm to use for the Sprite's in this layer.
     - ``offset`` - A tuple containing X and Y position offsets for the layer
@@ -232,7 +250,7 @@ class TileMap:
         map_file: str | Path = "",
         scaling: float = 1.0,
         layer_options: dict[str, dict[str, Any]] | None = None,
-        use_spatial_hash: bool = False,
+        use_spatial_hash: bool = True,
         hit_box_algorithm: HitBoxAlgorithm | None = None,
         tiled_map: pytiled_parser.TiledMap | None = None,
         offset: Vec2 = Vec2(0, 0),
@@ -299,6 +317,18 @@ class TileMap:
             "custom_class_args": {},
             "texture_atlas": texture_atlas,
         }
+
+        # Unknown options would otherwise be silently ignored, such as a
+        # misspelled "use_spatial_hashing"
+        for layer_name, options in (layer_options or {}).items():
+            unknown = sorted(set(options) - set(global_options))
+            if unknown:
+                warnings.warn(
+                    f"Unknown layer_options for layer {layer_name!r}: {', '.join(unknown)}. "
+                    f"The options are: {', '.join(global_options)}.",
+                    # Point at the code calling load_tilemap(), the usual way in
+                    stacklevel=3,
+                )
 
         for layer in self.tiled_map.layers:
             if (layer.name in self.sprite_lists) or (layer.name in self.object_lists):
@@ -496,8 +526,8 @@ class TileMap:
                     Custom classes for animated tiles must subclass TextureAnimationSprite.
                     """
                 )
-            # print(custom_class.__name__)
-            args = {"path_or_texture": image_file, "scale": scaling}
+            # The animation sets the texture
+            args = {"scale": scaling}
             my_sprite = custom_class(**custom_class_args, **args)  # type: ignore
         else:
             if not custom_class:
@@ -708,20 +738,7 @@ class TileMap:
         )
 
         if layer.transparent_color:
-            # The pillow source doesn't annotate a return type for this method, but:
-            # 1. The docstring does specify the returned object is sequence-like
-            # 2. We convert to RGBA mode implicitly in load_or_get_texture above
-            data: Sequence[RGBA255] = my_texture.image.getdata()  # type:ignore
-
-            target = layer.transparent_color
-            new_data = []
-            for item in data:
-                if item[0] == target[0] and item[1] == target[1] and item[2] == target[2]:
-                    new_data.append((255, 255, 255, 0))
-                else:
-                    new_data.append(item)
-
-            my_texture.image.putdata(new_data)
+            _make_color_transparent(my_texture.image, layer.transparent_color)
 
         if not custom_class:
             custom_class = Sprite
@@ -734,11 +751,10 @@ class TileMap:
                 """
             )
 
+        # The texture was loaded with the hit box algorithm above
         args = {
-            "filename": image_file,
             "scale": scaling,
             "path_or_texture": my_texture,
-            "hit_box_algorithm": hit_box_algorithm,
         }
 
         my_sprite = custom_class(**custom_class_args, **args)  #  type: ignore
@@ -1106,7 +1122,7 @@ def load_tilemap(
     map_file: str | Path,
     scaling: float = 1.0,
     layer_options: dict[str, dict[str, Any]] | None = None,
-    use_spatial_hash: bool = False,
+    use_spatial_hash: bool = True,
     hit_box_algorithm: HitBoxAlgorithm | None = None,
     offset: Vec2 = Vec2(0, 0),
     texture_atlas: DefaultTextureAtlas | None = None,
@@ -1128,10 +1144,10 @@ def load_tilemap(
         scaling:
             The global scaling to apply to all Sprite's within the map.
         use_spatial_hash:
-            If set to True, this will make moving a sprite
-            in the SpriteList slower, but it will speed up collision detection
-            with items in the SpriteList. Great for doing collision detection
-            with static walls/platforms.
+            Give each layer's SpriteList a spatial hash, which makes collision
+            checks against it much faster, and moving its sprites slower. On by
+            default. For a layer whose sprites move a lot, such as moving
+            platforms, turn it off in ``layer_options``.
         hit_box_algorithm:
             The hit box algorithm to use for collision detection.
         layer_options:

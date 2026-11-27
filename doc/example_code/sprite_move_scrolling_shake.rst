@@ -1,5 +1,3 @@
-:orphan:
-
 .. _sprite_move_scrolling_shake:
 
 Camera Shake
@@ -16,4 +14,4 @@ See the highlighted lines below.
 .. literalinclude:: ../../arcade/examples/sprite_move_scrolling_shake.py
     :caption: sprite_move_scrolling_shake.py
     :linenos:
-    :emphasize-lines: 154-171
+    :emphasize-lines: 58-64, 122, 130-131, 159, 170

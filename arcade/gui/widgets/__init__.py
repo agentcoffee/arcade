@@ -11,7 +11,7 @@ from weakref import WeakKeyDictionary
 
 from pyglet.event import EVENT_HANDLED, EVENT_UNHANDLED, EventDispatcher
 from pyglet.math import Vec2
-from typing_extensions import Self
+from typing import Self
 
 import arcade
 from arcade import LBWH, Rect, Sprite, Texture
@@ -280,10 +280,20 @@ class UIWidget(EventDispatcher, ABC):
         if self.visible:
             # pass event to children
             for child in reversed(self.children):
-                if child.dispatch_event("on_event", event):
+                if self._dispatch_event_to_child(child, event):
                     return EVENT_HANDLED
 
         return EVENT_UNHANDLED
+
+    def _dispatch_event_to_child(self, child: UIWidget, event: UIEvent) -> bool | None:
+        """Dispatch an event to a single child.
+
+        Subclasses can override this to transform the event before it reaches
+        the child, without affecting how the widget handles the event itself.
+        :class:`~arcade.gui.experimental.group.UIRenderGroup` uses this to map
+        mouse coordinates into the child's local space.
+        """
+        return child.dispatch_event("on_event", event)
 
     def _walk_parents(self) -> Iterable[UIWidget | UIManager]:
         parent = self.parent
@@ -323,17 +333,20 @@ class UIWidget(EventDispatcher, ABC):
             # rect changes in children will trigger_full_render
             child._do_layout()
 
-    def _do_render(self, surface: Surface, force=False) -> bool:
+    def _do_render(self, surface: Surface, force: bool = False) -> bool:
         """Helper function to trigger :meth:`UIWidget.do_render` through the widget tree,
         should only be used by UIManager!
 
         Returns:
             if this widget or a child was rendered
         """
+        if not self.visible:
+            return False
+
         rendered = False
 
         should_render = force or self._requires_render
-        if should_render and self.visible:
+        if should_render:
             rendered = True
             self.do_render_base(surface)
             self.do_render(surface)
@@ -341,10 +354,9 @@ class UIWidget(EventDispatcher, ABC):
                 self.do_render_focus(surface)
             self._requires_render = False
 
-        # only render children if self is visible
-        if self.visible:
-            for child in self.children:
-                rendered |= child._do_render(surface, should_render)
+        # pass render call to children
+        for child in self.children:
+            rendered |= child._do_render(surface, should_render)
 
         return rendered
 
@@ -961,6 +973,73 @@ class UISpriteWidget(UIWidget):
         surface.clear(color=TRANSPARENT_BLACK)
         if self._sprite is not None:
             surface.draw_sprite(0, 0, self.width, self.height, self._sprite)
+
+
+class UIInteractiveSpriteWidget(UIInteractiveWidget, UISpriteWidget):
+    """A sprite embedded in the UI tree that responds to click and hover events.
+
+    Wraps an existing :py:class:`~arcade.Sprite`, rendering it as a UI
+    widget with full interactive behavior: hover detection, press
+    tracking, click events, and optional visual state changes.
+
+    Combines :py:class:`UIInteractiveWidget` (mouse/keyboard
+    interaction, ``hovered`` / ``pressed`` / ``disabled`` states,
+    ``on_click`` event) with :py:class:`UISpriteWidget` (sprite
+    rendering and animation updates).
+
+    Example::
+
+        sprite = arcade.Sprite("card.png")
+        widget = UIInteractiveSpriteWidget(sprite=sprite)
+
+        @widget.event("on_click")
+        def on_click(event):
+            print(f"Card clicked at {event.x}, {event.y}")
+
+        ui_manager.add(widget)
+
+    For hover feedback, bind to the ``hovered`` property::
+
+        from arcade.gui.property import bind
+
+        def on_hover_change(widget):
+            if widget.hovered:
+                widget._sprite.color = (220, 220, 255)
+            else:
+                widget._sprite.color = (255, 255, 255)
+
+        bind(widget, "hovered", on_hover_change)
+
+    Args:
+        sprite: The sprite to display and make interactive.
+        width: Widget width in pixels. Defaults to the sprite's
+            texture width if not provided.
+        height: Widget height in pixels. Defaults to the sprite's
+            texture height if not provided.
+        **kwargs: Additional :py:class:`UIWidget` keyword arguments
+            (``size_hint``, ``size_hint_min``, ``size_hint_max``,
+            ``interaction_buttons``, etc.).
+    """
+
+    def __init__(
+        self,
+        *,
+        sprite: Sprite,
+        width: float | None = None,
+        height: float | None = None,
+        **kwargs,
+    ):
+        if width is None:
+            width = sprite.texture.width
+        if height is None:
+            height = sprite.texture.height
+
+        super().__init__(
+            sprite=sprite,
+            width=width,
+            height=height,
+            **kwargs,
+        )
 
 
 class UILayout(UIWidget):

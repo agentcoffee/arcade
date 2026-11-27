@@ -45,7 +45,7 @@ class PymunkPhysicsEngine:
      .. note:: Arcade would welcome assistance with improving it.
 
                If you are interested, please see Arcade's
-               `CONTRIBUTING.md <CONTRIBUTING.md: https://github.com/pythonarcade/arcade/blob/development/CONTRIBUTING.md>`_
+               `CONTRIBUTING.md <https://github.com/pythonarcade/arcade/blob/development/CONTRIBUTING.md>`_
 
     Args:
         gravity:
@@ -57,7 +57,7 @@ class PymunkPhysicsEngine:
             objects.
 
             * Override this for objects by passing different value
-              :`add_sprite` or :py:meth:`add_spritelist`
+              :`add_sprite` or :py:meth:`add_sprite_list`
             * See :py:attr:`pymunk.Space.damping` to learn more
 
         maximum_incline_on_ground:
@@ -120,8 +120,7 @@ class PymunkPhysicsEngine:
     objects by setting their positions and velocities directly:
 
     * :py:meth:`set_velocity`
-    * :py:meth:`set_velocity_horizontal`
-    * :py:meth:`set_velocity_vertical`
+    * :py:meth:`set_horizontal_velocity`
     * :py:meth:`set_position`
 
 
@@ -203,7 +202,7 @@ class PymunkPhysicsEngine:
                 pass :py:attr:`MOMENT_INF` or ``float('inf')`` to "lock"
                 its angle).
 
-                See :py:attr:`pymunk.Shape.moment_of_inertia` to learn more.
+                See :py:attr:`pymunk.Shape.moment` to learn more.
 
             body_type:
                 :py:attr:`DYNAMIC` (default), :py:attr:`KINEMATIC`, or
@@ -266,7 +265,7 @@ class PymunkPhysicsEngine:
 
         # Set the body's position
         body.position = pymunk.Vec2d(sprite.center_x, sprite.center_y)
-        body.angle = math.radians(sprite.angle)
+        body.angle = math.radians(-sprite.angle)
 
         # Callback used if we need custom gravity, damping, velocity, etc.
         def velocity_callback(
@@ -403,7 +402,7 @@ class PymunkPhysicsEngine:
                 pass :py:attr:`MOMENT_INF` or ``float('inf')`` to "lock"
                 its angle).
 
-                See :py:attr:`pymunk.Shape.moment_of_inertia` to learn more.
+                See :py:attr:`pymunk.Shape.moment` to learn more.
 
             body_type:
                 :py:attr:`DYNAMIC` (default), :py:attr:`KINEMATIC`, or
@@ -514,7 +513,7 @@ class PymunkPhysicsEngine:
             raise PymunkException(
                 "Tried to set a rotation, but this physics object has no 'body' set."
             )
-        physics_object.body.angle = math.radians(rotation)
+        physics_object.body.angle = math.radians(-rotation)
 
     def set_velocity(self, sprite: Sprite, velocity: tuple[float, float]) -> None:
         """Directly set the velocity of a sprite known to the engine.

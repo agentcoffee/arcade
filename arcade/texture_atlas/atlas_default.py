@@ -140,6 +140,7 @@ class DefaultTextureAtlas(TextureAtlasBase):
         # This also means we can resize the atlas in the gpu
         # by rendering the old atlas into the new one.
         self._fbo = self._ctx.framebuffer(color_attachments=[self._texture])
+        self._render_into_stack: tuple[Texture, ...] = ()
 
         # Texture coordinate data for images and textures.
         # * The image UVs are used when rebuilding the atlas
@@ -225,7 +226,7 @@ class DefaultTextureAtlas(TextureAtlasBase):
     def textures(self) -> list[Texture]:
         """
         All textures instance added to the atlas regardless
-        of their internal state. See :py:meth:`unique_textures``
+        of their internal state. See :py:attr:`unique_textures`
         for textures with unique image data and transformation.
         """
         return list(self._textures)
@@ -248,11 +249,13 @@ class DefaultTextureAtlas(TextureAtlasBase):
             # Entry was GCed during iteration
             if tex_set is None:
                 continue
-            # Corrupt data
-            if len(tex_set) == 0:
-                raise RuntimeError("Empty set in unique textures")
+            # The last texture with this name is dying and its finalizer
+            # hasn't removed the name yet
+            texture = next(iter(tex_set), None)
+            if texture is None:
+                continue
 
-            textures.append(next(iter(tex_set)))
+            textures.append(texture)
 
         return textures
 
@@ -276,7 +279,7 @@ class DefaultTextureAtlas(TextureAtlasBase):
         Returns:
             texture_id, AtlasRegion tuple
         Raises:
-            AllocatorException: If there are no room for the texture
+            pyglet.graphics.atlas.AllocatorException: If there are no room for the texture
         """
         return self._add(texture)
 
@@ -292,11 +295,19 @@ class DefaultTextureAtlas(TextureAtlasBase):
             create_finalizer:
                 If a finalizer should be created
         """
-        # Quickly handle a texture already having a unique texture in the atlas
-        if self.has_unique_texture(texture):
+        # Quickly handle a texture already having a unique texture in the atlas.
+        # Hold a live texture with the same name while adding this one: if
+        # the last one were collected during these calls, its finalizer would
+        # free the name's slot under us.
+        shared = self._unique_textures.get(texture.atlas_name)
+        living = next(iter(shared), None) if shared else None
+        if living is not None:
             # Add add references to the duplicate texture
             if not self.has_texture(texture):
                 self._add_texture_ref(texture, create_finalizer=create_finalizer)
+                # Track every texture sharing this name, so the set is only
+                # empty when none of them are alive
+                self._unique_textures[texture.atlas_name].add(texture)
             slot = self._texture_uvs.get_slot_or_raise(texture.atlas_name)
             region = self.get_texture_region_info(texture.atlas_name)
             return slot, region
@@ -317,15 +328,19 @@ class DefaultTextureAtlas(TextureAtlasBase):
                         f"Max size: {self._max_size}"
                     )
 
-                # If we have lost regions/images we can try to rebuild the atlas
-                removed_image_count = self._image_ref_count.get_total_decref()
-                if removed_image_count > 0:
-                    self.rebuild()
-                    return self._add(texture, create_finalizer=create_finalizer)
-
                 # Double the size of the atlas (capped by max size)
                 width = min(self.width * 2, self.max_width)
                 height = min(self.height * 2, self.max_height)
+
+                # If we have lost regions/images we can try to rebuild the atlas.
+                # While rendering into the atlas, grow instead if it can: a
+                # rebuild moves every texture, including the one being drawn into.
+                removed_image_count = self._image_ref_count.get_total_decref()
+                can_grow = self._size != (width, height)
+                if removed_image_count > 0 and not (self._render_into_stack and can_grow):
+                    self.rebuild()
+                    return self._add(texture, create_finalizer=create_finalizer)
+
                 # If the size didn't change we have a problem ..
                 if self._size == (width, height):
                     raise
@@ -545,10 +560,11 @@ class DefaultTextureAtlas(TextureAtlasBase):
 
         # Remove the unique texture if ref counter reaches 0
         if self._unique_texture_ref_count.dec_ref_by_atlas_name(atlas_name) == 0:
-            # Remove the unique texture key to signal we don't have any more
-            refs = self._unique_textures[atlas_name]
-            if len(refs) == 0:
-                del self._unique_textures[atlas_name]
+            # No texture with this name is left. The set may still hold the
+            # dying texture if this finalizer ran before the set's own weak
+            # reference callback, so remove the name regardless. Otherwise a
+            # later texture with the same name would find it with no slot.
+            self._unique_textures.pop(atlas_name, None)
 
             # Reclaim region and uv slot
             del self._texture_regions[atlas_name]
@@ -679,6 +695,13 @@ class DefaultTextureAtlas(TextureAtlasBase):
 
         # Keep a reference to the old atlas texture so we can copy it into the new one
         atlas_texture_old = self._texture
+        if self._render_into_stack:
+            # Keep the framebuffer yielded by render_into attached to the atlas.
+            # Back up its pixels before resizing the existing attachment in place.
+            atlas_texture_old = self._ctx.texture(self._size, components=4)
+            backup_fbo = self._ctx.framebuffer(color_attachments=[atlas_texture_old])
+            with backup_fbo.activate():
+                self._ctx.copy_framebuffer(self._fbo, backup_fbo)
         atlas_texture_old.filter = self._ctx.NEAREST, self._ctx.NEAREST
         self._size = size
 
@@ -688,8 +711,12 @@ class DefaultTextureAtlas(TextureAtlasBase):
         self._image_uvs = image_uvs_old.clone_with_slots()
 
         # Create new atlas texture and framebuffer
-        self._texture = self._ctx.texture(size, components=4)
-        self._fbo = self._ctx.framebuffer(color_attachments=[self._texture])
+        if self._render_into_stack:
+            self._texture.resize(size)
+            self._fbo.resize()
+        else:
+            self._texture = self._ctx.texture(size, components=4)
+            self._fbo = self._ctx.framebuffer(color_attachments=[self._texture])
 
         # Store old images and textures before clearing the atlas
         images = list(self._images.values())
@@ -727,15 +754,21 @@ class DefaultTextureAtlas(TextureAtlasBase):
 
         # Render the old atlas into the new one. This means we actually move
         # all the textures around from the old to the new position.
-        with self._fbo.activate():
-            # Ensure no context flags are enabled
-            with self._ctx.enabled_only():
-                self._ctx.geometry_empty.render(
-                    self._ctx.atlas_resize_program,
-                    mode=self._ctx.TRIANGLES,
-                    # Two triangles per texture
-                    vertices=UV_TEXTURE_WIDTH * self._capacity * 6,
-                )
+        scissor = self._fbo.scissor
+        try:
+            self._fbo.scissor = None
+            with self._fbo.activate():
+                # Ensure no context flags are enabled
+                with self._ctx.enabled_only():
+                    self._ctx.geometry_empty.render(
+                        self._ctx.atlas_resize_program,
+                        mode=self._ctx.TRIANGLES,
+                        # Two triangles per texture
+                        vertices=UV_TEXTURE_WIDTH * self._capacity * 6,
+                    )
+        finally:
+            self._fbo.scissor = scissor
+            self._update_render_into_viewport()
 
         self._version += 1
         # duration = time.perf_counter() - resize_start
@@ -752,6 +785,12 @@ class DefaultTextureAtlas(TextureAtlasBase):
 
         # Hold a reference to the old textures
         textures = self.textures
+
+        # Textures being rendered into have been drawn on since their images
+        # were added, and the rebuild redraws every texture from its image.
+        # Keep what was drawn by copying it to their images first.
+        for target in self._render_into_stack:
+            self.update_texture_image_from_atlas(target)
 
         self._image_ref_count.clear()
         self._unique_texture_ref_count.clear()
@@ -771,6 +810,9 @@ class DefaultTextureAtlas(TextureAtlasBase):
         for texture in sorted(textures, key=lambda x: x.image.size[1]):
             self._add(texture, create_finalizer=False)
 
+        # The texture being rendered into may have moved
+        self._update_render_into_viewport()
+
         self._version += 1
 
     def use_uv_texture(self, unit: int = 0) -> None:
@@ -789,6 +831,14 @@ class DefaultTextureAtlas(TextureAtlasBase):
         self._texture_uvs.write_to_texture()
 
         self._texture_uvs.texture.use(unit)
+
+    def _update_render_into_viewport(self) -> None:
+        if self._render_into_stack:
+            texture = self._render_into_stack[-1]
+            region = self._texture_regions[texture.atlas_name]
+            self._fbo.viewport = region.x, region.y, region.width, region.height
+        else:
+            self._fbo.viewport = 0, 0, *self._fbo.size
 
     @contextlib.contextmanager
     def render_into(
@@ -824,6 +874,7 @@ class DefaultTextureAtlas(TextureAtlasBase):
         """
         region = self._texture_regions[texture.atlas_name]
         prev_camera = self.ctx.current_camera
+        prev_fbo = self.ctx.active_framebuffer
 
         # Use provided projection or default
         projection = projection or (0, region.width, 0, region.height)
@@ -837,14 +888,26 @@ class DefaultTextureAtlas(TextureAtlasBase):
             1.0,  # zoom
         )
 
-        with self._fbo.activate() as fbo:
-            try:
-                static_camera.use()
-                fbo.viewport = region.x, region.y, region.width, region.height
-                yield fbo
-            finally:
-                fbo.viewport = 0, 0, *self._fbo.size
-        prev_camera.use()
+        try:
+            # Select the projector before binding the atlas, so framebuffer
+            # activation cannot change the previous default camera's projection.
+            static_camera.use()
+            with self._fbo.activate() as fbo:
+                self._render_into_stack += (texture,)
+                try:
+                    self._update_render_into_viewport()
+                    yield fbo
+                finally:
+                    self._render_into_stack = self._render_into_stack[:-1]
+                    self._update_render_into_viewport()
+        finally:
+            # A suspended outer atlas may have moved its render region during
+            # resize. Camera.use() must not overwrite that updated viewport.
+            viewport, scissor = prev_fbo.viewport, prev_fbo.scissor
+            prev_camera.use()
+            prev_fbo.use()
+            prev_fbo.viewport = viewport
+            prev_fbo.scissor = scissor
 
     def read_texture_image_from_atlas(self, texture: Texture) -> Image.Image:
         """

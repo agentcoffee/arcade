@@ -4,17 +4,11 @@ import logging
 import weakref
 from abc import ABC, abstractmethod
 from collections import deque
+from collections.abc import Iterable, Sequence
 from contextlib import contextmanager
 from typing import (
     Any,
-    Deque,
-    Dict,
-    Iterable,
-    List,
     Literal,
-    Sequence,
-    Set,
-    Tuple,
     overload,
 )
 
@@ -227,9 +221,9 @@ class Context(ABC):
         self._primitive_restart_index = -1
 
         # States
-        self._blend_func: Tuple[int, int] | Tuple[int, int, int, int] = self.BLEND_DEFAULT
+        self._blend_func: tuple[int, int] | tuple[int, int, int, int] = self.BLEND_DEFAULT
         self._point_size = 1.0
-        self._flags: Set[int] = set()
+        self._flags: set[int] = set()
         self._wireframe = False
         # Options for cull_face
         self._cull_face_options = {
@@ -248,7 +242,7 @@ class Context(ABC):
         self.gc_mode = gc_mode
         #: Collected objects to gc when gc_mode is "context_gc".
         #: This can be used during debugging.
-        self.objects: Deque[Any] = deque()
+        self.objects: deque[Any] = deque()
 
     @abstractmethod
     def _create_default_framebuffer(self) -> DefaultFrameBuffer:
@@ -516,7 +510,7 @@ class Context(ABC):
         return flag in self._flags
 
     @property
-    def viewport(self) -> Tuple[int, int, int, int]:
+    def viewport(self) -> tuple[int, int, int, int]:
         """
         Get or set the viewport for the currently active framebuffer.
         The viewport simply describes what pixels of the screen
@@ -533,11 +527,11 @@ class Context(ABC):
         return self.active_framebuffer.viewport
 
     @viewport.setter
-    def viewport(self, value: Tuple[int, int, int, int]):
+    def viewport(self, value: tuple[int, int, int, int]):
         self.active_framebuffer.viewport = value
 
     @property
-    def scissor(self) -> Tuple[int, int, int, int] | None:
+    def scissor(self) -> tuple[int, int, int, int] | None:
         """
         Get or set the scissor box for the active framebuffer.
         This is a shortcut for :py:meth:`~arcade.gl.Framebuffer.scissor`.
@@ -562,7 +556,7 @@ class Context(ABC):
         self.fbo.scissor = value
 
     @property
-    def blend_func(self) -> Tuple[int, int] | Tuple[int, int, int, int]:
+    def blend_func(self) -> tuple[int, int] | tuple[int, int, int, int]:
         """
         Get or set the blend function.
         This is tuple specifying how the color and
@@ -597,7 +591,7 @@ class Context(ABC):
 
         These enums can be accessed in the ``arcade.gl``
         module or simply as attributes of the context object.
-        The raw enums from ``pyglet.gl`` can also be used.
+        The raw enums from ``pyglet.graphics.api.gl`` can also be used.
 
         Example::
 
@@ -611,7 +605,7 @@ class Context(ABC):
 
     @blend_func.setter
     @abstractmethod
-    def blend_func(self, value: Tuple[int, int] | Tuple[int, int, int, int]):
+    def blend_func(self, value: tuple[int, int] | tuple[int, int, int, int]):
         raise NotImplementedError("The enabled graphics backend does not support this method.")
 
     # def blend_equation(self)
@@ -692,11 +686,11 @@ class Context(ABC):
         Set or get the point size. Default is `1.0`.
 
         Point size changes the pixel size of rendered points. The min and max values
-        are limited by :py:attr:`~arcade.gl.context.Limits.POINT_SIZE_RANGE`.
+        are limited by ``ctx.info.POINT_SIZE_RANGE``.
         This value usually at least ``(1, 100)``, but this depends on the drivers/vendors.
 
         If variable point size is needed you can enable
-        :py:attr:`~arcade.gl.Context.PROGRAM_POINT_SIZE` and write to ``gl_PointSize``
+        ``ctx.PROGRAM_POINT_SIZE`` and write to ``gl_PointSize``
         in the vertex or geometry shader.
 
         .. Note::
@@ -844,7 +838,7 @@ class Context(ABC):
     def framebuffer(
         self,
         *,
-        color_attachments: Texture2D | List[Texture2D] | None = None,
+        color_attachments: Texture2D | list[Texture2D] | None = None,
         depth_attachment: Texture2D | None = None,
     ) -> Framebuffer:
         """Create a Framebuffer.
@@ -860,7 +854,7 @@ class Context(ABC):
     @abstractmethod
     def texture(
         self,
-        size: Tuple[int, int],
+        size: tuple[int, int],
         *,
         components: int = 4,
         dtype: str = "f1",
@@ -948,7 +942,7 @@ class Context(ABC):
     @abstractmethod
     def texture_array(
         self,
-        size: Tuple[int, int, int],
+        size: tuple[int, int, int],
         *,
         components: int = 4,
         dtype: str = "f1",
@@ -967,13 +961,13 @@ class Context(ABC):
 
         Note that ``size`` is a 3-tuple where the last value is the number  of layers.
 
-        See :py:meth:`~arcade.gl.Context.texture` for arguments.
+        See :py:meth:`~arcade.gl.context.Context.texture` for arguments.
         """
         raise NotImplementedError("The enabled graphics backend does not support this method.")
 
     @abstractmethod
     def depth_texture(
-        self, size: Tuple[int, int], *, data: BufferProtocol | None = None
+        self, size: tuple[int, int], *, data: BufferProtocol | None = None
     ) -> Texture2D:
         """
         Create a 2D depth texture. Can be used as a depth attachment
@@ -1094,8 +1088,8 @@ class Context(ABC):
         geometry_shader: str | None = None,
         tess_control_shader: str | None = None,
         tess_evaluation_shader: str | None = None,
-        common: List[str] | None = None,
-        defines: Dict[str, str] | None = None,
+        common: list[str] | None = None,
+        defines: dict[str, str] | None = None,
         varyings: Sequence[str] | None = None,
         varyings_capture_mode: str = "interleaved",
     ) -> Program:
@@ -1365,7 +1359,7 @@ class Info(ABC):
         self.MAX_TEXTURE_MAX_ANISOTROPY = self.get_float(enums.MAX_TEXTURE_MAX_ANISOTROPY, 1.0)
         """The highest supported anisotropy value. Usually 8.0 or 16.0."""
 
-        self.MAX_VIEWPORT_DIMS: Tuple[int, int] = self.get_int_tuple(enums.MAX_VIEWPORT_DIMS, 2)
+        self.MAX_VIEWPORT_DIMS: tuple[int, int] = self.get_int_tuple(enums.MAX_VIEWPORT_DIMS, 2)
         """
         The maximum support window or framebuffer viewport.
         This is usually the same as the maximum texture size
@@ -1380,10 +1374,10 @@ class Info(ABC):
         """
 
     @overload
-    def get_int_tuple(self, enum, length: Literal[2]) -> Tuple[int, int]: ...
+    def get_int_tuple(self, enum, length: Literal[2]) -> tuple[int, int]: ...
 
     @overload
-    def get_int_tuple(self, enum, length: int) -> Tuple[int, ...]: ...
+    def get_int_tuple(self, enum, length: int) -> tuple[int, ...]: ...
 
     @abstractmethod
     def get_int_tuple(self, enum, length: int):

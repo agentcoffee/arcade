@@ -1,12 +1,10 @@
-# type: ignore
 from __future__ import annotations
 
 from collections.abc import Callable
 from enum import Enum
-from typing import Any, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
 
 import pyglet
-from pyglet.input.base import Controller
 from typing_extensions import TypedDict
 
 import arcade
@@ -19,6 +17,10 @@ from arcade.input.input_mapping import (
     serialize_action,
     serialize_axis,
 )
+
+if TYPE_CHECKING:
+    # Importing pyglet.input is slow, so only type checkers do it here
+    from pyglet.input import Controller
 from arcade.input.inputs import InputEnum, InputType
 from arcade.input.raw_dicts import RawAction, RawAxis
 from arcade.types import OneOrIterableOf
@@ -31,16 +33,15 @@ class RawInputManager(TypedDict):
     controller_deadzone: float
 
 
-_K = TypeVar("_K")
 _V = TypeVar("_V")
 
 
-def _clean_dicts(to_remove: _V, *dicts_to_clean: dict[_K, set[_V]]) -> None:
+def _clean_dicts(to_remove: _V, *dicts_to_clean: dict[Any, set[_V]]) -> None:
     """Clean a dictionary in-place.
 
     This helps simplify serialization code for controller config.
     """
-    to_discard = []
+    to_discard: list[Any] = []
     for to_clean in dicts_to_clean:
         if to_discard:
             to_discard.clear()
@@ -66,26 +67,29 @@ class InputDevice(Enum):
 
 class InputManager:
     """
-    The InputManager is responsible for managing input for a given device, this can be the keyboard/mouse or a controller.
+    The InputManager is responsible for managing input for a given device, this can be the
+    keyboard/mouse or a controller.
 
-    In general, you can share one InputManager for one controller and the keyboard/mouse, there are even utilities to handle
-    automatically switching between them as the active device. However if you intend to have multiple controllers connected
-    to your game, each controller should have it's own InputManager.
+    In general, you can share one InputManager for one controller and the keyboard/mouse, there are
+    even utilities to handle automatically switching between them as the active device. However if
+    you intend to have multiple controllers connected to your game, each controller should have it's
+    own InputManager.
 
-    For runnable examples of how to use this, please see Arcdade's
-    :ref:`built-in InputManager examples <input_manager_examples>`.
+    For a runnable example, see ``arcade/examples/sprite_move_input_manager.py``.
 
     Args:
         controller:
             Either a Pyglet Controller object or None if you only want to use the keyboard/mouse.
         allow_keyboard:
-            Whether to allow keyboard input, defaults to True, can be changed safely after initialization.
+            Whether to allow keyboard input, defaults to True, can be changed safely after
+            initialization.
         action_handlers:
-            Either one or a collection of functions that will be called for every action that is triggered.
-            :py:meth:`InputManager.subscribe_to_action` may be preferred to subscribe to individual actions instead.
+            Either one or a collection of functions that will be called for every action that is
+            triggered. :py:meth:`InputManager.subscribe_to_action` may be preferred to subscribe to
+            individual actions instead.
         controller_deadzone:
-            The deadzone for controller input, defaults to 0.1. If changes to axis values are within this
-            range from the underlying hardware, they will be ignored.
+            The deadzone for controller input, defaults to 0.1. If changes to axis values are within
+            this range from the underlying hardware, they will be ignored.
     """
 
     def __init__(
@@ -135,10 +139,12 @@ class InputManager:
 
         self.controller = None
         self.controller_deadzone = controller_deadzone
+        self._dpad_state = pyglet.math.Vec2()
         if controller:
             self.controller = controller
             if not self.controller.device.is_open:
                 self.controller.open()
+            self._dpad_state = self.controller.dpad
 
             self.controller.push_handlers(
                 self.on_button_press,
@@ -153,15 +159,18 @@ class InputManager:
 
     def serialize(self) -> RawInputManager:
         """
-        Serializes the current state of the InputManager into a RawInputManager dictionary which can easily be saved to JSON.
+        Serializes the current state of the InputManager into a RawInputManager dictionary which can
+        easily be saved to JSON.
 
-        This does not include current values of inputs, but rather the structure of the InputManager. Including:
-          - Actions: All registered actions
-          - Axes: All registered axis inputs
-          - Current Mappings: All current mappings of underlying inputs to actions/axis
+        This does not include current values of inputs, but rather the structure of the
+        InputManager. Including:
 
-        The output dictionary of this function can be passed to :meth:`arcade.InputManager.parse` to create a new InputManager
-        from a serialized one.
+        - Actions: All registered actions
+        - Axes: All registered axis inputs
+        - Current Mappings: All current mappings of underlying inputs to actions/axis
+
+        The output dictionary of this function can be passed to :meth:`arcade.InputManager.parse` to
+        create a new InputManager from a serialized one.
 
         Returns:
             A RawInputManager dictionary representing the current state of the InputManager.
@@ -181,8 +190,8 @@ class InputManager:
     @classmethod
     def parse(cls, raw: RawInputManager) -> InputManager:
         """
-        Create a new InputManager from a serialized dictionary. Can be used in combination with the :meth:`arcade.InputManager.serialize` to
-        save/load input configurations.
+        Create a new InputManager from a serialized dictionary. Can be used in combination with the
+        :meth:`arcade.InputManager.serialize` to save/load input configurations.
 
         Returns:
             A new InputManager with the state defined in the provided RawInputManager dictionary.
@@ -194,7 +203,7 @@ class InputManager:
             final.new_action(name)
 
             for raw_mapping in raw_action["mappings"]:
-                input_instance = inputs.parse_instance(raw_mapping)
+                input_instance = inputs.parse_mapping_input_enum(raw_mapping)
 
                 final.add_action_input(
                     name,
@@ -207,20 +216,22 @@ class InputManager:
         for raw_axis in raw["axes"]:
             name = raw_axis["name"]
             final.new_axis(name)
-            for raw_mapping in raw_axis["mappings"]:
-                input_instance = inputs.parse_instance(raw_mapping)
+            for raw_axis_mapping in raw_axis["mappings"]:
+                input_instance = inputs.parse_mapping_input_enum(raw_axis_mapping)
 
-                final.add_axis_input(name, input_instance, raw_mapping["scale"])
+                final.add_axis_input(name, input_instance, raw_axis_mapping["scale"])
 
         return final
 
     def copy_existing(self, existing: InputManager):
         """
-        Copies the state of another InputManager into this one. Note that this does not create a new InputManager, but modifies the one on which it is called.
+        Copies the state of another InputManager into this one. Note that this does not create a new
+        InputManager, but modifies the one on which it is called.
 
         This does not copy current input values, just the structure/mappings of the InputManager.
 
-        If you want to create a new InputManager from an existing one, use :meth:`arcade.InputManager.from_existing`
+        If you want to create a new InputManager from an existing one, use
+        :meth:`arcade.InputManager.from_existing`
 
         Args:
             existing: The InputManager to copy from.
@@ -239,16 +250,19 @@ class InputManager:
     def from_existing(
         cls,
         existing: InputManager,
-        controller: pyglet.input.Controller | None = None,
+        controller: Controller | None = None,
     ) -> InputManager:
         """
-        Create a new InputManager from an existing one. This does not copy current input values, just the structure/mappings of the InputManager.
+        Create a new InputManager from an existing one. This does not copy current input values,
+        just the structure/mappings of the InputManager.
 
-        If you want to create a new InputManager from a serialized dictionary, use :meth:`arcade.InputManager.parse`
+        If you want to create a new InputManager from a serialized dictionary, use
+        :meth:`arcade.InputManager.parse`
 
         Args:
             existing: The InputManager to copy from.
-            controller: The controller to use for this InputManager. If None, no Controller will be bound.
+            controller: The controller to use for this InputManager. If None, no Controller will be
+                bound.
 
         Returns:
             A new InputManager with the state defined in the provided existing InputManager.
@@ -264,7 +278,8 @@ class InputManager:
 
     def bind_controller(self, controller: Controller):
         """
-        Bind a controller to this InputManager. If a controller is already bound, it will be unbound first.
+        Bind a controller to this InputManager. If a controller is already bound, it will be unbound
+        first.
 
         Upon binding a controller it will be set as the active device.
 
@@ -276,6 +291,7 @@ class InputManager:
 
         self.controller = controller
         self.controller.open()
+        self._dpad_state = controller.dpad
         self.controller.push_handlers(
             self.on_button_press,
             self.on_button_release,
@@ -305,6 +321,7 @@ class InputManager:
         )
         self.controller.close()
         self.controller = None
+        self._dpad_state = pyglet.math.Vec2()
 
         if self._allow_keyboard:
             self.active_device = InputDevice.KEYBOARD
@@ -314,7 +331,8 @@ class InputManager:
         """
         Whether the keyboard is allowed for this InputManager. This also effects mouse input.
 
-        If this is false then all keyboard and mouse input will be ignored regardless of if there are mappings for them.
+        If this is false then all keyboard and mouse input will be ignored regardless of if there
+        are mappings for them.
         """
         return self._allow_keyboard
 
@@ -339,7 +357,8 @@ class InputManager:
         name: str,
     ):
         """
-        Create a new action with the given name. If an action with the same name already exists, this will do nothing.
+        Create a new action with the given name. If an action with the same name already exists,
+        this will do nothing.
 
         Args:
             name: The name of the action to create.
@@ -352,7 +371,8 @@ class InputManager:
 
     def remove_action(self, name: str):
         """
-        Remove the specified action. If the action does not exist, this will do nothing. All registered inputs for the action will be removed.
+        Remove the specified action. If the action does not exist, this will do nothing. All
+        registered inputs for the action will be removed.
         Args:
             name: The name of the action to remove.
         """
@@ -423,8 +443,9 @@ class InputManager:
         """
         Register a callback function for all actions from this InputManager.
 
-        The callback function should accept a String with the name of the Action, and an ActionState.
-        This callback will receive all action events, regardless of if :meth:`arcade.InputManager.subscribe_to_action` has been used as well.
+        The callback function should accept a String with the name of the Action, and an
+        ActionState. This callback will receive all action events, regardless of if
+        :meth:`arcade.InputManager.subscribe_to_action` has been used as well.
 
         Args:
             handler: The callback function to register.
@@ -466,7 +487,8 @@ class InputManager:
         Args:
             axis: The axis to register the input for
             input: The input to register
-            scale: The value to multiply the input by, for non analog inputs the scale value is used literally.
+            scale: The value to multiply the input by, for non analog inputs the scale value is used
+                literally.
         """
         mapping = AxisMapping(input, scale)
         self.axes[axis].add_mapping(mapping)
@@ -491,8 +513,8 @@ class InputManager:
         self, axis: str, positive: InputEnum, negative: InputEnum, scale: float = 1.0
     ):
         """
-        This is a helper function that wraps :meth:`arcade.InputManager.add_axis_input` to add two inputs
-        with a positive and negative scale.
+        This is a helper function that wraps :meth:`arcade.InputManager.add_axis_input` to add two
+        inputs with a positive and negative scale.
 
         For example, you can do:
         add_axis_input_combined("MoveHorizontal", arcade.Keys.RIGHT, arcade.Keys.LEFT, 1.0)
@@ -504,7 +526,8 @@ class InputManager:
             axis: The axis name to register the input for
             positive: The input that will correspond to the positive side of the axis
             negative: The input that will correspond to the negative side of the axis
-            scale: The value to multiply the input by, for non analog inputs the scale value is used literally.
+            scale: The value to multiply the input by, for non analog inputs the scale value is used
+                literally.
         """
         self.add_axis_input(axis, positive, scale)
         self.add_axis_input(axis, negative, -scale)
@@ -523,7 +546,8 @@ class InputManager:
 
     def remove_axis(self, axis: str):
         """
-        Completely remove an axis from the manager. This will also clear the registered inputs for that axis.
+        Completely remove an axis from the manager. This will also clear the registered inputs for
+        that axis.
 
         Args:
             axis: The axis to remove
@@ -658,6 +682,24 @@ class InputManager:
     def on_dpad_motion(self, controller: Controller, motion: pyglet.math.Vec2):
         self.active_device = InputDevice.CONTROLLER
 
+        previous = self._dpad_state
+        direction_states = {
+            inputs.ControllerButtons.DPAD_LEFT.value: (previous.x < 0, motion.x < 0),
+            inputs.ControllerButtons.DPAD_RIGHT.value: (previous.x > 0, motion.x > 0),
+            inputs.ControllerButtons.DPAD_UP.value: (previous.y > 0, motion.y > 0),
+            inputs.ControllerButtons.DPAD_DOWN.value: (previous.y < 0, motion.y < 0),
+        }
+
+        for button_name, (was_pressed, is_pressed) in direction_states.items():
+            if was_pressed == is_pressed:
+                continue
+
+            state = ActionState.PRESSED if is_pressed else ActionState.RELEASED
+            for action_name in tuple(self.controller_buttons_to_actions.get(button_name, set())):
+                self.dispatch_action(action_name, state)
+
+        self._dpad_state = motion
+
     def handle_trigger_motion(self, trigger_name: str, value: float):
         self.active_device = InputDevice.CONTROLLER
 
@@ -669,7 +711,8 @@ class InputManager:
 
     def update(self):
         """
-        Updates axis inputs, all axis values will remain unchanged unless this function is called, usually during on_update.
+        Updates axis inputs, all axis values will remain unchanged unless this function is called,
+        usually during on_update.
         """
         for name in self.axes.keys():
             self.axes_state[name] = 0

@@ -1,5 +1,3 @@
-:orphan:
-
 .. _sprite_move_scrolling:
 
 Move with a Scrolling Screen - Centered
@@ -22,4 +20,4 @@ See also :ref:`sprite_move_scrolling_box`.
 .. literalinclude:: ../../arcade/examples/sprite_move_scrolling.py
     :caption: sprite_move_scrolling.py
     :linenos:
-    :emphasize-lines: 56-59, 96-97, 103-104, 160-161, 163-174, 176-182
+    :emphasize-lines: 55-58, 100-101, 107-108, 161-162, 164-176, 178-184

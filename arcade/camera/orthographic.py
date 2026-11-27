@@ -2,10 +2,9 @@ from __future__ import annotations
 
 from collections.abc import Generator
 from contextlib import contextmanager
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Self
 
 from pyglet.math import Mat4, Vec2, Vec3
-from typing_extensions import Self
 
 from arcade.camera.data_types import (
     DEFAULT_FAR,
@@ -129,8 +128,8 @@ class OrthographicProjector(Projector):
 
         self._window.ctx.viewport = self.viewport.lbwh_int
         self._window.ctx.scissor = None if not self.scissor else self.scissor.lbwh_int
-        self._window.projection = _projection
-        self._window.view = _view
+        self._window.ctx.projection_matrix = _projection
+        self._window.ctx.view_matrix = _view
 
     @contextmanager
     def activate(self) -> Generator[Self, None, None]:

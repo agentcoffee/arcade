@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Generator
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Generator
+from typing import TYPE_CHECKING
 
 from arcade.types import RGBOrA255, RGBOrANormalized
 
@@ -20,7 +21,7 @@ class Framebuffer(ABC):
     The advantage of using texture attachments is the ability we get
     to keep working on the contents of the framebuffer.
 
-    The best way to create framebuffer is through :py:meth:`arcade.gl.Context.framebuffer`::
+    The best way to create framebuffer is through :py:meth:`arcade.gl.context.Context.framebuffer`::
 
         # Create a 100 x 100 framebuffer with one attachment
         ctx.framebuffer(color_attachments=[ctx.texture((100, 100), components=4)])
@@ -62,7 +63,7 @@ class Framebuffer(ABC):
 
     def __init__(
         self,
-        ctx: "Context",
+        ctx: Context,
         *,
         color_attachments: Texture2D | list[Texture2D],
         depth_attachment: Texture2D | None = None,
@@ -128,7 +129,7 @@ class Framebuffer(ABC):
             # Disable scissoring
             ctx.scissor = None
 
-        :type: tuple (x, y, width, height)
+        The value is a tuple of ``(x, y, width, height)`` or ``None`` to disable.
 
         """
         return self._scissor
@@ -139,7 +140,7 @@ class Framebuffer(ABC):
         raise NotImplementedError("The enabled graphics backend does not support this method.")
 
     @property
-    def ctx(self) -> "Context":
+    def ctx(self) -> Context:
         """The context this object belongs to."""
         return self._ctx
 
@@ -176,7 +177,7 @@ class Framebuffer(ABC):
     @property
     def depth_mask(self) -> bool:
         """
-        Get or set the depth mask (default: ``True``).
+        Get or set the depth mask. Defaults to ``True``.
 
         It determines if depth values should be written
         to the depth texture when depth testing is enabled.
@@ -343,7 +344,7 @@ class DefaultFrameBuffer(Framebuffer, ABC):
     is_default = True
     """Is this the default framebuffer? (window buffer)"""
 
-    def __init__(self, ctx: "Context"):
+    def __init__(self, ctx: Context):
         self._ctx = ctx
         # TODO: Can we query this?
         self._samples = 0

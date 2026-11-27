@@ -1,5 +1,3 @@
-:orphan:
-
 .. _sprite_rotate_around_point:
 
 Sprite Rotation Around a Point
@@ -28,4 +26,4 @@ with user input, see :ref:`sprite_rotate_around_tank`.
 .. literalinclude:: ../../arcade/examples/sprite_rotate_around_point.py
     :caption: sprite_rotate_around_point.py
     :linenos:
-    :emphasize-lines: 30-48, 91-98
+    :emphasize-lines: 29-52, 97-106

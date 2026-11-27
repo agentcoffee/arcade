@@ -45,14 +45,14 @@ Check that you are using a supported version of Python. Inspect the `pyproject.t
 
 The rest of this guide assumes you've already done the following:
 
-1. [Installed Python 3.9+ with pip](https://wiki.python.org/moin/BeginnersGuide/Download)
+1. [Installed Python 3.10+ with pip](https://wiki.python.org/moin/BeginnersGuide/Download)
 2. [Installed git](https://git-scm.com/book/en/v2/Getting-Started-Installing-Git)
 3. [Forked the repo on GitHub](https://docs.github.com/en/get-started/quickstart/fork-a-repo#forking-a-repository)
 4. [Cloned your fork locally](https://docs.github.com/en/get-started/quickstart/fork-a-repo#cloning-your-forked-repository)
 5. Changed directories into your local Arcade clone's folder
 
-[Creating & using a virtual environment](https://docs.python.org/3/library/venv.html#creating-virtual-environments)
-is also strongly recommended.
+[The UV package manager](https://docs.python.org/3/library/venv.html#creating-virtual-environments)
+is strongly recommended.
 
 ## Installing Arcade in Editable Mode
 
@@ -60,10 +60,14 @@ To install all necessary development dependencies, run this command in your
 terminal from inside the top level of the Arcade directory:
 
 ```bash
-pip install -e '.[dev]'
+uv sync
 ```
 
-If you get an error like the one below, you probably need to update your pip version:
+For `uv`, either run `make.py` with `uv run ./make.py` or run `. .venv/bin/activate` when you open a terminal before running `make.py`.
+
+Alternatively, use Python's builtin `venv` and run `pip install -e .[dev]` to use editable mode.
+
+If you get an error like the one below, you probably need to update your pip version or install a newer Python version:
 
 ```
 ERROR: File "setup.py" not found. Directory cannot be installed in editable mode: /home/user/Projects/arcade

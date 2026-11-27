@@ -3,8 +3,8 @@ from __future__ import annotations
 import warnings
 from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Literal, TypeVar
 from types import EllipsisType
+from typing import Literal, TypeVar
 
 from typing_extensions import override
 
@@ -200,7 +200,7 @@ class UIAnchorLayout(UILayout):
 
 class UIBoxLayout(UILayout):
     """Place widgets next to each other. Depending on the
-    :py:class:`~arcade.gui.UIBoxLayout.vertical` attribute, the widgets are
+    ``vertical`` attribute, the widgets are
     placed top to bottom or left to right.
 
     .. hint::
@@ -296,6 +296,7 @@ class UIBoxLayout(UILayout):
         bind(child, "size_hint", self._trigger_size_hint_update, weak=True)
         bind(child, "size_hint_min", self._trigger_size_hint_update, weak=True)
         bind(child, "size_hint_max", self._trigger_size_hint_update, weak=True)
+        bind(child, "visible", self._trigger_size_hint_update, weak=True)
 
         return super().add(child, **kwargs)
 
@@ -308,6 +309,7 @@ class UIBoxLayout(UILayout):
         unbind(child, "size_hint", self._trigger_size_hint_update)
         unbind(child, "size_hint_min", self._trigger_size_hint_update)
         unbind(child, "size_hint_max", self._trigger_size_hint_update)
+        unbind(child, "visible", self._trigger_size_hint_update)
 
         return super().remove(child)
 
@@ -317,12 +319,12 @@ class UIBoxLayout(UILayout):
     def _update_size_hints(self):
         self._size_hint_requires_update = False
 
-        required_space_between = max(0, len(self.children) - 1) * self._space_between
         min_child_sizes = [
             UILayout.min_size_of(child) for child in self.children if child.visible is not None
         ]
+        required_space_between = max(0, len(min_child_sizes) - 1) * self._space_between
 
-        if len(self.children) == 0:
+        if not min_child_sizes:
             width = 0
             height = 0
         elif self.vertical:
@@ -362,12 +364,11 @@ class UIBoxLayout(UILayout):
         start_y = self.content_rect.top
         start_x = self.content_rect.left
 
-        if not self.children:
-            return
-
         children_to_render = [
             (child, data) for child, data in self._children if child.visible is not None
         ]
+        if not children_to_render:
+            return
 
         # main axis
         constraints = [
@@ -377,7 +378,7 @@ class UIBoxLayout(UILayout):
 
         available_space = (
             self.content_height if self.vertical else self.content_width
-        ) - self._space_between * (len(self.children) - 1)
+        ) - self._space_between * (len(children_to_render) - 1)
         main_sizes = _box_axis_algorithm(constraints, available_space)
 
         # orthogonal axis

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import weakref
-from ctypes import Array, c_int, c_uint, string_at
+from ctypes import Array, c_int, c_uint
 from typing import TYPE_CHECKING
 
 from pyglet.graphics import core
@@ -25,7 +25,7 @@ class OpenGLFramebuffer(Framebuffer):
     The advantage of using texture attachments is the ability we get
     to keep working on the contents of the framebuffer.
 
-    The best way to create framebuffer is through :py:meth:`arcade.gl.Context.framebuffer`::
+    The best way to create framebuffer is through :py:meth:`arcade.gl.context.Context.framebuffer`::
 
         # Create a 100 x 100 framebuffer with one attachment
         ctx.framebuffer(color_attachments=[ctx.texture((100, 100), components=4)])
@@ -52,7 +52,7 @@ class OpenGLFramebuffer(Framebuffer):
 
     def __init__(
         self,
-        ctx: "Context",
+        ctx: Context,
         *,
         color_attachments: OpenGLTexture2D | list[OpenGLTexture2D],
         depth_attachment: OpenGLTexture2D | None = None,
@@ -103,6 +103,9 @@ class OpenGLFramebuffer(Framebuffer):
             weakref.finalize(self, OpenGLFramebuffer.delete_glo, ctx, fbo_id)
 
     def __del__(self):
+        # Creating the object can fail before the OpenGL object exists
+        if not hasattr(self, "_glo"):
+            return
         # Intercept garbage collection if we are using Context.gc()
         if self._ctx.gc_mode == "context_gc" and not self.is_default and self._glo.value > 0:
             self._ctx.objects.append(self)
@@ -293,7 +296,9 @@ class OpenGLFramebuffer(Framebuffer):
             if not self.is_default:
                 gl.glReadBuffer(gl.GL_COLOR_ATTACHMENT0)  # Reset to default
 
-        return string_at(data, len(data))
+        # bytes() rather than ctypes.string_at, which can't read 2 GB or more on
+        # Windows: its size is a C long
+        return bytes(data)
 
     def delete(self):
         """
@@ -347,7 +352,7 @@ class OpenGLFramebuffer(Framebuffer):
             )
 
     def __repr__(self):
-        return "<Framebuffer glo={}>".format(self._glo.value)
+        return f"<Framebuffer glo={self._glo.value}>"
 
 
 class OpenGLDefaultFrameBuffer(DefaultFrameBuffer, OpenGLFramebuffer):
@@ -368,7 +373,7 @@ class OpenGLDefaultFrameBuffer(DefaultFrameBuffer, OpenGLFramebuffer):
     is_default = True
     """Is this the default framebuffer? (window buffer)"""
 
-    def __init__(self, ctx: "Context"):
+    def __init__(self, ctx: Context):
         super().__init__(ctx)
 
         value = c_int()

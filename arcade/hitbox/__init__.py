@@ -11,8 +11,10 @@ from .simple import SimpleHitBoxAlgorithm
 algo_simple = SimpleHitBoxAlgorithm()
 
 #: The detailed hit box algorithm. This depends on pymunk and will fallback to the simple algorithm.
+algo_detailed: HitBoxAlgorithm
 try:
     from .pymunk import PymunkHitBoxAlgorithm
+
     algo_detailed = PymunkHitBoxAlgorithm()
 except ImportError:
     print("WARNING: Running without PyMunk. The detailed hitbox algorithm will fallback to simple")

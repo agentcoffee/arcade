@@ -31,9 +31,11 @@ __all__ = [
 _T = TypeVar("_T")
 _TType = TypeVar("_TType", bound=type)
 
+is_pyodide = True if sys.platform == "emscripten" else False
+
 
 class Chain(Generic[_T]):
-    """A reusable OOP version of :py:class:`itertools.chain`.
+    """A reusable OOP version of :py:func:`itertools.chain`.
 
     In some cases (physics engines), we need to iterate over multiple
     sequences of objects repeatedly. This class provides a way to do so
@@ -164,13 +166,13 @@ def grow_sequence(
     * an abbreviation for repetitive if-blocks in config and settings menus
 
     The default ``append_if`` value is the :py:func:`.is_str_or_noniterable`
-    function in this module. You can pass any :py:func:`~typing.Callable`
+    function in this module. You can pass any :py:data:`~typing.Callable`
     which returns:
 
     * ``True`` if we should :py:meth:`append <list.append>`
     * ``False`` if we should :py:meth:`extend <list.extend>`
 
-    This includes both the :py:class:`callable` function and your own custom
+    This includes both the :py:func:`callable` function and your own custom
     functions. For example:
 
     .. code-block:: python
@@ -191,7 +193,7 @@ def grow_sequence(
 
     Args:
         destination:
-            A :py:func:`list` or other :py:class:`~typing.MutableSequence`
+            A :py:class:`list` or other :py:class:`~typing.MutableSequence`
             to append to or extend.
         source:
             A value source we'll use to grow the ``destination``
@@ -253,12 +255,6 @@ def copy_dunders_unimplemented(decorated_type: _TType) -> _TType:
     decorated_type.__deepcopy__ = __deepcopy__  # type: ignore
 
     return decorated_type
-
-
-def is_pyodide() -> bool:
-    if sys.platform == "emscripten":
-        return True
-    return False
 
 
 def is_raspberry_pi() -> bool:

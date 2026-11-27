@@ -23,7 +23,7 @@ class UITextureButtonStyle(UIStyleBase):
     """
 
     font_size: int = 12
-    font_name: FontNameOrNames = ("Kenney Future", "arial", "calibri")
+    font_name: FontNameOrNames = ("Kenney Future", "Liberation Sans", "arial")
     font_color: RGBA255 = uicolor.WHITE
 
 
@@ -219,7 +219,7 @@ class UIFlatButtonStyle(UIStyleBase):
     """
 
     font_size: int = 12
-    font_name: FontNameOrNames = ("Kenney Future", "arial", "calibri")
+    font_name: FontNameOrNames = ("Kenney Future", "Liberation Sans", "arial")
     font_color: RGBA255 = color.WHITE
     bg: RGBA255 = uicolor.DARK_BLUE_MIDNIGHT_BLUE
     border: RGBA255 | None = None
@@ -369,11 +369,13 @@ class UIFlatButton(UIInteractiveWidget, UIStyledWidget[UIFlatButtonStyle], UITex
 
         # render button border (which is not the widgets border)
         if border_color and border_width:
+            # The outline is centered on the rectangle's edge, so inset it by
+            # half its width to draw it right up to the button's edge
             arcade.draw_lbwh_rectangle_outline(
-                border_width,
-                border_width,
-                self.content_width - 2 * border_width,
-                self.content_height - 2 * border_width,
+                border_width / 2,
+                border_width / 2,
+                self.content_width - border_width,
+                self.content_height - border_width,
                 color=border_color,
                 border_width=border_width,
             )
@@ -383,4 +385,10 @@ class UIFlatButton(UIInteractiveWidget, UIStyledWidget[UIFlatButtonStyle], UITex
         font_name = style.get("font_name", UIFlatButton.UIStyle.font_name)
         font_size = style.get("font_size", UIFlatButton.UIStyle.font_size)
         font_color = style.get("font_color", UIFlatButton.UIStyle.font_color)
-        self.ui_label.update_font(font_name, font_size, font_color)
+
+        if (
+            font_name != self.ui_label.font_name
+            or font_size != self.ui_label.font_size
+            or font_color != self.ui_label.font_color
+        ):
+            self.ui_label.update_font(font_name, font_size, font_color)

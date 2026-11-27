@@ -99,6 +99,9 @@ Both provide a :py:class:`Sound` instance and accept the same arguments:
      - :py:class:`bool`
      - * ``True`` streams from disk
        * ``False`` loads the whole file
+   * - ``decoder`` (keyword-only)
+     - :py:class:`pyglet.media.codecs.MediaDecoder` **|** ``None``
+     - A specific decoder, or ``None`` for automatic selection
 
 The simplest option is to use :py:func:`arcade.load_sound`:
 
@@ -123,6 +126,24 @@ directly:
 
     # For music files and ambiance tracks, streaming=True is usually best
     streaming_music_file = Sound(":resources:music/1918.mp3", streaming=True)
+
+To select a decoder explicitly, pass a
+:py:class:`pyglet.media.codecs.MediaDecoder` instance as ``decoder`` to either
+loader. For example, pyglet includes a WAV decoder:
+
+.. code-block:: python
+
+    import arcade
+    from pyglet.media.codecs.wave import WaveDecoder
+
+    sound = arcade.load_sound(":resources:sounds/hurt1.wav", decoder=WaveDecoder())
+
+You can also pass your own ``MediaDecoder`` subclass without subclassing
+:py:class:`Sound` or registering the decoder globally. The selected decoder
+receives the resolved file path and the ``streaming`` setting. If it fails,
+pyglet does not fall back to other decoders. Any dependencies required by the
+decoder must already be installed; passing a decoder does not add support for
+its formats automatically.
 
 To learn more, please see the following:
 
@@ -203,7 +224,7 @@ Stopping a Specific Playback
 There are two easy ways of stopping a playback of a :py:class:`Sound`.
 
 The first is to choose which function we'll pass its
-:py:class:`~pyglet.media.player.Player` object to:
+:py:class:`~pyglet.media.player.AudioPlayer` object to:
 
 * :py:func:`arcade.stop_sound`:
 
@@ -321,7 +342,7 @@ may want to access its functionality directly.
 .. rubric:: Pausing
 
 There is no stop method. Instead, call
-:py:meth:`Player.pause() <pyglet.media.player.Player.pause>`:
+:py:meth:`AudioPlayer.pause() <pyglet.media.player.AudioPlayer.pause>`:
 
 .. code-block:: python
 
@@ -330,11 +351,11 @@ There is no stop method. Instead, call
 
 .. rubric:: Stopping Permanently
 
-.. _garbage collection: https://devguide.python.org/internals/garbage-collector/
+.. _garbage collection: https://github.com/python/cpython/blob/main/InternalDocs/garbage_collector.md
 
 After you've paused a player, you can stop playback permanently as follows:
 
-#. Call the player's :py:meth:`~pyglet.media.player.Player.delete` method:
+#. Call the player's :py:meth:`~pyglet.media.player.AudioPlayer.delete` method:
 
    .. code-block:: python
 
@@ -408,7 +429,7 @@ following advanced arguments:
 
 Change Ongoing Playbacks via Player Objects
 """""""""""""""""""""""""""""""""""""""""""
-:py:meth:`Player.pause() <pyglet.media.player.Player.pause>` is one of
+:py:meth:`AudioPlayer.pause() <pyglet.media.player.AudioPlayer.pause>` is one of
 many method and property members which change aspects of an ongoing
 playback. It's impossible to cover them all here, especially given the
 complexity of :ref:`positional audio <sound-other-libraries-pyglet-positional>`.
@@ -421,22 +442,22 @@ arguments to Arcade functions.
 .. list-table::
    :header-rows: 1
 
-   * - :py:class:`~pyglet.media.player.Player` Member
+   * - :py:class:`~pyglet.media.player.AudioPlayer` Member
      - Type
      - Default
      - Purpose
 
-   * - :py:meth:`~pyglet.media.player.Player.pause`
+   * - :py:meth:`~pyglet.media.player.AudioPlayer.pause`
      - method
      - N/A
      - Pause playback resumably.
 
-   * - :py:meth:`~pyglet.media.player.Player.play`
+   * - :py:meth:`~pyglet.media.player.AudioPlayer.play`
      - method
      - N/A
      - Resume paused playback.
 
-   * - :py:meth:`~pyglet.media.player.Player.seek`
+   * - :py:meth:`~pyglet.media.player.AudioPlayer.seek`
      - method
      - N/A
      - .. warning:: :ref:`Using this option with streaming can cause freezes!
@@ -445,18 +466,18 @@ arguments to Arcade functions.
        Skip to the passed :py:class:`float` timestamp measured as seconds
        from the audio's start.
 
-   * - :py:attr:`~pyglet.media.player.Player.volume`
+   * - :py:attr:`~pyglet.media.player.AudioPlayer.volume`
      - :py:class:`float` property
      - ``1.0``
      - A scaling factor for playing the audio between
        ``0.0`` (silent) and ``1.0`` (full volume).
 
-   * - :py:attr:`~pyglet.media.player.Player.loop`
+   * - :py:attr:`~pyglet.media.player.AudioPlayer.loop`
      - :py:class:`bool` property
      - ``False``
      - Whether to restart playback automatically after finishing. [#streamingnoloop2]_
 
-   * - :py:attr:`~pyglet.media.player.Player.pitch` [#inconsistencyspeed]_
+   * - :py:attr:`~pyglet.media.player.AudioPlayer.pitch` [#inconsistencyspeed]_
      - :py:class:`float` property
      - ``1.0``
      - How fast to play the sound data; also affects pitch.
@@ -475,7 +496,7 @@ Configure New Playbacks via Keyword Arguments
 Arcade's helper functions for playing sound also accept keyword
 arguments for configuring playback. As mentioned above, the names of
 these keywords are similar or identical to those of properties on
-:py:class:`~pyglet.media.player.Player`. See the following to learn
+:py:class:`~pyglet.media.player.AudioPlayer`. See the following to learn
 more:
 
 * :py:func:`arcade.play_sound`
@@ -708,7 +729,7 @@ volumes across the channels for physical speakers based on in-game
 distances.
 
 Although pyglet exposes its support for this through its
-:py:class:`~pyglet.media.player.Player`, Arcade does not currently offer
+:py:class:`~pyglet.media.player.AudioPlayer`, Arcade does not currently offer
 integrations. You will have to do the setup work yourself.
 
 .. _pyglet_positional_guide: https://pyglet.readthedocs.io/en/latest/programming_guide/media.html#positional-audio
@@ -723,7 +744,7 @@ of links should serve as a primer for trying positional audio:
    #. `Controlling playback <pyglet_controlling_playback_>`_
    #. `Positional audio <pyglet_positional_guide_>`_
 
-#. :py:class:`pyglet.media.player.Player`'s full documentation
+#. :py:class:`pyglet.media.player.AudioPlayer`'s full documentation
 
 External Libraries
 ^^^^^^^^^^^^^^^^^^

@@ -1,9 +1,9 @@
-from typing import Callable, Any
+from collections.abc import Callable
+from typing import Any
 
-import pytest
 from pyglet.math import Vec2
-from arcade.types.rect import Rect, LBWH, LRBT, XYRR, XYWH
 
+from arcade.types.rect import LBWH, LRBT, XYRR, XYWH, Rect
 
 A_RECT = Rect(10, 20, 10, 20, 10, 10, 15, 15)
 
@@ -96,7 +96,7 @@ def test_views():
 class SubclassedRect(Rect): ...
 
 
-ALL_ZEROES = tuple((0 for _ in Rect._fields))
+ALL_ZEROES = tuple(0 for _ in Rect._fields)
 
 
 def _formats_correctly(func: Callable[[Any], str], starts_with_format: str, instance: Any) -> bool:

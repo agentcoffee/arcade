@@ -1,13 +1,11 @@
-from typing import Tuple
 from math import radians
 
 import pytest as pytest
-
 from pyglet.math import Vec2
 
-from arcade import Window, LRBT
+from arcade import LRBT, Window
 from arcade.camera import Camera2D
-from arcade.camera.data_types import ZeroProjectionDimension, OrthographicProjectionData
+from arcade.camera.data_types import OrthographicProjectionData, ZeroProjectionDimension
 
 
 class Camera2DSub1(Camera2D): ...
@@ -52,7 +50,7 @@ def same_near_far(request):
 
 def test_camera2d_from_camera_data_projection_xy_pairs_equal_raises_zeroprojectiondimension(
     window: Window,
-    bad_projection: Tuple[float, float, float, float],  # Clarify type for PyCharm
+    bad_projection: tuple[float, float, float, float],  # Clarify type for PyCharm
     camera_class,
 ):
     data = OrthographicProjectionData(*bad_projection, -100.0, 100.0)
@@ -62,7 +60,7 @@ def test_camera2d_from_camera_data_projection_xy_pairs_equal_raises_zeroprojecti
 
 
 def test_camera2d_init_xy_pairs_equal_raises_zeroprojectiondimension(
-    window: Window, bad_projection: Tuple[float, float, float, float], camera_class
+    window: Window, bad_projection: tuple[float, float, float, float], camera_class
 ):
     with pytest.raises(ZeroProjectionDimension):
         _ = camera_class(projection=LRBT(*bad_projection))
@@ -87,7 +85,7 @@ ASPECT_RATIOS = (1.0, 4.0 / 3.0, 16.0 / 9.0, 16.0 / 10.0)
 
 def test_camera2d_init_aspect_equal_0_raises_zeroprojectiondimension(window: Window):
     with pytest.raises(ZeroProjectionDimension):
-        camera = Camera2D(aspect=0.0)
+        Camera2D(aspect=0.0)
 
 
 @pytest.mark.parametrize("aspect", ASPECT_RATIOS)

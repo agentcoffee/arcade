@@ -10,7 +10,7 @@ from arcade.gui.experimental import UIScrollArea
 from arcade.gui.experimental.focus import UIFocusMixin
 from arcade.gui.experimental.scroll_area import UIScrollBar
 from arcade.gui.ui_manager import UIManager
-from arcade.gui.widgets import UILayout, UIWidget
+from arcade.gui.widgets import UILayout, UIWidget, W
 from arcade.gui.widgets.buttons import UIFlatButton
 from arcade.gui.widgets.layout import UIBoxLayout
 
@@ -42,11 +42,10 @@ class _UIDropdownOverlay(UIFocusMixin, UIBoxLayout):
         self._scroll_area = UIScrollArea(
             width=100,
             height=100,
-            canvas_size=(100, 100),
             size_hint=(1, 1),
+            scroll_speed=scroll_speed,
+            invert_scroll=invert_scroll,
         )
-        self._scroll_area.invert_scroll = invert_scroll
-        self._scroll_area.scroll_speed = scroll_speed
         self._scroll_area.add(self._options_layout)
 
         super().add(self._scroll_area)
@@ -57,7 +56,7 @@ class _UIDropdownOverlay(UIFocusMixin, UIBoxLayout):
             self._scroll_bar.rect = self._scroll_bar.rect.resize(width=self.SCROLL_BAR_WIDTH)
             super().add(self._scroll_bar)
 
-    def add_option(self, widget: UIWidget) -> UIWidget:
+    def add_option(self, widget: W) -> W:
         """Add an option widget to the options layout."""
         return self._options_layout.add(widget)
 
@@ -294,8 +293,7 @@ class UIDropdown(UILayout):
         overlay_w = self.width + scroll_bar_w
 
         overlay.rect = (
-            overlay.rect
-            .resize(overlay_w, visible_h)
+            overlay.rect.resize(overlay_w, visible_h)
             .align_top(self.bottom - 2)
             .align_left(self._default_button.left)
         )

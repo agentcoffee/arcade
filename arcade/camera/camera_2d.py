@@ -3,10 +3,9 @@ from __future__ import annotations
 from collections.abc import Generator
 from contextlib import contextmanager
 from math import atan2, cos, degrees, pow, radians, sin
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Self
 
 from pyglet.math import Vec2, Vec3
-from typing_extensions import Self
 
 from arcade.camera.data_types import (
     DEFAULT_FAR,
@@ -296,8 +295,8 @@ class Camera2D:
 
         self._window.ctx.viewport = self._viewport.lbwh_int
         self._window.ctx.scissor = None if not self.scissor else self.scissor.lbwh_int
-        self._window.projection = _projection
-        self._window.view = _view
+        self._window.ctx.projection_matrix = _projection
+        self._window.ctx.view_matrix = _view
 
     @contextmanager
     def activate(self) -> Generator[Self, None, None]:
@@ -586,7 +585,7 @@ class Camera2D:
     def move_by(self, change: Point2) -> Point2:
         """
         Move the camera in world space along the XY axes by the provided change.
-        If you want to drag the camera with a mouse :py:func:`camera2D.drag_by`
+        If you want to drag the camera with a mouse :py:meth:`drag_by`
         is the method to use.
 
         Args:
@@ -611,7 +610,7 @@ class Camera2D:
         move right. So a user moving the mouse right expects the camera to move
         left.
 
-        The simplest use case is with the Window/View's :py:func:`on_mouse_drag`
+        The simplest use case is with the Window/View's :py:meth:`~arcade.Window.on_mouse_drag`
         .. code-block:: python
 
             def on_mouse_drag(self, x, y, dx, dy, buttons, modifiers):

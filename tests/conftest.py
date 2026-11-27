@@ -9,14 +9,13 @@ if os.environ.get("ARCADE_PYTEST_USE_RUST"):
 
     arcade_accelerate.bootstrap()
 
-import pytest
 import PIL.Image
+import pytest
 from pyglet.math import Mat4
 
 import arcade
+from arcade import LBWH, Rect, gl
 from arcade.clock import GLOBAL_CLOCK, GLOBAL_FIXED_CLOCK
-from arcade import Rect, LBWH
-from arcade import gl
 
 # from arcade.texture import default_texture_cache
 # NOTE: Load liberation fonts in unit tests
@@ -83,8 +82,9 @@ def create_window(width=1280, height=720, caption="Testing", **kwargs):
             gl_api=GL_BACKEND,
         )
         WINDOW.set_vsync(False)
-        # This value is being monkey-patched into the Window class so that tests can identify if we are using
-        # arcade-accelerate easily in case they need to disable something when it is enabled.
+        # This value is being monkey-patched into the Window class so that tests can
+        # identify if we are using arcade-accelerate easily in case they need to disable
+        # something when it is enabled.
         WINDOW.using_accelerate = os.environ.get("ARCADE_PYTEST_USE_RUST")  # pyright: ignore
     return WINDOW
 
@@ -433,30 +433,17 @@ class Offscreen:
         region = LBWH(0, 0, 1280, 720)
         return self.read_region_image(region)
 
-    def read_pixel(self, x, y, components=3) -> tuple[int, int, int, int] | tuple[int, int, int]:
-        """Read a single RGBA pixel from the offscreen buffer"""
-        data = self.fbo.read(components=4, viewport=(x, y, 1, 1))
-        return (
-            int.from_bytes(data[0:4], "little"),
-            int.from_bytes(data[4:8], "little"),
-            int.from_bytes(data[8:12], "little"),
-            int.from_bytes(data[12:16], "little"),
-        )
+    def read_pixel(self, x, y, components=3) -> tuple[int, ...]:
+        """Read a single RGB or RGBA pixel from the offscreen buffer"""
+        # One byte per channel
+        return tuple(self.fbo.read(components=components, viewport=(x, y, 1, 1)))
 
     def read_region(self, rect: Rect) -> list[tuple[int, int, int, int]]:
-        """Read a region of RGBA pixels from the offscreen buffer"""
+        """Read a region of RGBA pixels from the offscreen buffer, row by row from the bottom"""
         data = self.fbo.read(
             components=4, viewport=(rect.left, rect.bottom, rect.width, rect.height)
         )
-        return [
-            (
-                int.from_bytes(data[i : i + 4], "little"),
-                int.from_bytes(data[i + 4 : i + 8], "little"),
-                int.from_bytes(data[i + 8 : i + 12], "little"),
-                int.from_bytes(data[i + 12 : i + 16], "little"),
-            )
-            for i in range(0, len(data), 16)
-        ]
+        return [(data[i], data[i + 1], data[i + 2], data[i + 3]) for i in range(0, len(data), 4)]
 
     def read_region_bytes(self, rect: Rect, components=3) -> bytes:
         """Read a region of RGBA pixels from the offscreen buffer as bytes"""

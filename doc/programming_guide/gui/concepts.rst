@@ -255,6 +255,38 @@ Available:
 - :py:class:`~arcade.gui.UIMessageBox` - A simple message box with a title, message and buttons.
 - :py:class:`arcade.gui.UIButtonRow` - A row of buttons.
 
+
+Animations
+==========
+
+Widgets can be animated with the experimental
+:py:class:`~arcade.gui.experimental.UIAnimatedGroup`, which wraps a widget
+subtree and tweens its transform properties over time:
+
+.. code-block:: python
+
+    from arcade.gui.experimental import UIAnimatedGroup
+
+    group = UIAnimatedGroup(child=UIFlatButton(text="Play"))
+
+    # pop and fade in with easing, then wiggle once
+    group.animate(scale=1.0, alpha=255, duration=0.5, ease=Easing.BACK_OUT)
+    group.animate(angle=3, duration=0.06).then(angle=-3, duration=0.12).then(angle=0, duration=0.06)
+
+Animations support sequencing (``then()``), repetition (``repeat``,
+``yoyo``), relative targets (:py:func:`~arcade.gui.experimental.rel`),
+completion callbacks (``on_finish()``) and are resolved per property:
+starting a new animation takes over its properties from running ones.
+
+The group renders its subtree into a cached surface and provides transform
+properties (``scale``, ``angle``, ``alpha``, ``offset_x``, ``offset_y``,
+``tint``) which do not affect layouting. For the non-interactive caching
+primitive without hover/click states, use
+:py:class:`~arcade.gui.experimental.UIRenderGroup`.
+
+See :ref:`gui_animations` for a full guide, including the low level
+transition classes.
+
 Available Elements
 ==================
 
@@ -289,7 +321,7 @@ Styling options are shown in the table below.
 |``font_name``   |Font name or family for the button text. If a tuple is      |
 |                |supplied then Arcade will attempt to load all of the fonts, |
 |                |prioritizing the first one. Defaults to                     |
-|                |``("calibri", "arial")``.                                   |
+|                |``("Kenney Future", "Liberation Sans", "arial")``.          |
 +----------------+------------------------------------------------------------+
 |``font_color``  |Font color for the button text (foreground). Defaults to    |
 |                |white for normal, hover, and disabled states. Defaults to   |
@@ -340,7 +372,7 @@ flat buttons.
 |``font_name``   |Font name or family for the button text. If a tuple is      |
 |                |supplied then Arcade will attempt to load all of the fonts, |
 |                |prioritizing the first one. Defaults to                     |
-|                |``("calibri", "arial")``.                                   |
+|                |``("Kenney Future", "Liberation Sans", "arial")``.          |
 +----------------+------------------------------------------------------------+
 |``font_color``  |Font color for the button text (foreground). Defaults to    |
 |                |white for normal, hover, and disabled states. Defaults to   |

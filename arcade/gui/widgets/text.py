@@ -5,8 +5,10 @@ from typing import Literal
 
 import pyglet
 from pyglet.event import EVENT_HANDLED, EVENT_UNHANDLED
+from pyglet.text import LinearGradient
 from pyglet.text.caret import Caret
 from pyglet.text.document import AbstractDocument
+from pyglet.text.formats.html import HTMLDecoder
 from typing_extensions import override
 
 import arcade
@@ -30,7 +32,12 @@ from arcade.gui.style import UIStyleBase, UIStyledWidget
 from arcade.gui.surface import Surface
 from arcade.gui.widgets import UIInteractiveWidget, UIWidget
 from arcade.gui.widgets.layout import UIAnchorLayout
-from arcade.text import FontNameOrNames
+from arcade.text import (
+    FontNameOrNames,
+    _attempt_font_name_resolution,
+    _to_text_color,
+    _to_weight,
+)
 from arcade.types import LBWH, RGBA255, Color, RGBOrA255
 
 
@@ -53,10 +60,10 @@ class UILabel(UIWidget):
         y: y position (default anchor is bottom-left).
         width: Width of the label. Defaults to text width if not
             specified. See
-            :py:meth:`~pyglet.text.layout.TextLayout.content_width`.
+            :py:attr:`~pyglet.text.layout.TextLayout.content_width`.
         height: Height of the label. Defaults to text height if not
             specified. See
-            :py:meth:`~pyglet.text.layout.TextLayout.content_height`.
+            :py:attr:`~pyglet.text.layout.TextLayout.content_height`.
         font_name: A list of fonts to use. Arcade will start at the
             beginning of the tuple and keep trying to load fonts until
             success.
@@ -90,7 +97,7 @@ class UILabel(UIWidget):
         y: float = 0,
         width: float | None = None,
         height: float | None = None,
-        font_name=("calibri", "arial"),
+        font_name=("Liberation Sans", "arial"),
         font_size: float = 12,
         text_color: RGBOrA255 = arcade.color.WHITE,
         bold: str | bool = False,
@@ -108,6 +115,11 @@ class UILabel(UIWidget):
         if multiline and not width:
             width = self.ADAPTIVE_MULTILINE_WIDTH
             adaptive_multiline = True
+
+        # arcade.Text resolves the requested font name(s) to the concrete
+        # loaded font, so the requested value has to be kept separately for
+        # change detection in update_font
+        self._requested_font_name = font_name
 
         # Use Arcade Text wrapper of pyglet.Label for text rendering
         self._label = arcade.Text(
@@ -211,7 +223,7 @@ class UILabel(UIWidget):
         return self._label.font_size
 
     @property
-    def font_color(self) -> Color:
+    def font_color(self) -> Color | LinearGradient:
         """Font color of the label. Use :py:meth:`~arcade.gui.UILabel.update_font` to change."""
         return self._label.color
 
@@ -257,9 +269,9 @@ class UILabel(UIWidget):
         self,
         font_name: FontNameOrNames | None = None,
         font_size: float | None = None,
-        font_color: Color | None = None,
+        font_color: RGBOrA255 | LinearGradient | None = None,
         bold: bool | str | None = None,
-        italic: bool | None = None,
+        italic: bool | str | None = None,
     ):
         """Update font of the label.
 
@@ -268,23 +280,30 @@ class UILabel(UIWidget):
                 beginning of the tuple and keep trying to load fonts until
                 success.
             font_size: Font size of font.
-            font_color: Color of the text.
-            bold: May be any value in :py:obj:`pyglet.text.Weight`,
+            font_color: Color of the text, or a
+                :py:class:`pyglet.text.LinearGradient`.
+            bold: May be any value in :py:class:`pyglet.enums.Weight`,
                 ``True`` (converts to ``"bold"``), or ``False``
-                (converts to ``"regular"``).
+                (converts to ``"normal"``).
             italic: If enabled, the label's text will be in an *italic*
+                style. May also be ``"oblique"``.
         """
-        font_name = font_name or self._label.font_name
+        font_name = font_name or self._requested_font_name
         font_size = font_size or self._label.font_size
-        font_color = font_color or self._label.color
+        if font_color is None:
+            font_color = self._label.color
         font_bold = bold if bold is not None else self._label.bold
         font_italic = italic if italic is not None else self._label.italic
 
-        # ensure type of font_color, label will allways be a color
-        font_color = Color.from_iterable(font_color)
+        # The label holds a Color or a gradient, so compare with the same type
+        font_color = _to_text_color(font_color)
 
-        # Check if values actually changed, if then update and trigger render
-        font_name_changed = self._label.font_name != font_name
+        # Check if values actually changed, if then update and trigger render.
+        # The label holds the resolved font name (e.g. "arial" for
+        # ("Kenney Future", "arial")), so the requested name has to be
+        # compared against the previously requested one, otherwise this
+        # would report a change on every call.
+        font_name_changed = self._requested_font_name != font_name
         font_size_changed = self._label.font_size != font_size
         font_color_changed = self._label.color != font_color
         font_bold_changed = self._label.bold != font_bold
@@ -296,6 +315,7 @@ class UILabel(UIWidget):
             or font_bold_changed
             or font_italic_changed
         ):
+            self._requested_font_name = font_name
             with self._label:
                 self._label.font_name = font_name
                 self._label.font_size = font_size
@@ -506,7 +526,7 @@ class UIInputText(UIStyledWidget[UIInputTextStyle], UIInteractiveWidget):
         width: float = 100,
         height: float = 25,  # required height for font size 12 + border width 1
         text: str = "",
-        font_name=("Arial",),
+        font_name=("Liberation Sans", "arial"),
         font_size: float = 12,
         text_color: RGBOrA255 = arcade.color.WHITE,
         multiline=False,
@@ -552,7 +572,12 @@ class UIInputText(UIStyledWidget[UIInputTextStyle], UIInteractiveWidget):
         self.doc.set_style(
             0,
             len(text),
-            dict(font_name=font_name, font_size=font_size, color=self._text_color),
+            dict(
+                # Loads font files and bundled fonts, as arcade.Text does
+                font_name=_attempt_font_name_resolution(font_name),
+                font_size=font_size,
+                color=self._text_color,
+            ),
         )
 
         self.layout = pyglet.text.layout.IncrementalTextLayout(
@@ -584,13 +609,17 @@ class UIInputText(UIStyledWidget[UIInputTextStyle], UIInteractiveWidget):
     def _on_focus_change(self):
         if self.focused:
             self.activate()
-        elif self.active:
+        elif self._active:
             self.deactivate()
 
     def _on_active_changed(self):
         """Handle the active state change of the input
         text field to care about loosing active state."""
-        if not self._active:
+        if self._active:
+            self.trigger_full_render()
+            self.caret.on_activate()
+            self.caret.position = len(self.doc.text)
+        else:
             self.deactivate()
 
     def _apply_style(self):
@@ -807,6 +836,8 @@ class UITextArea(UIWidget):
             PLAIN will decode the text as plain text, ATTRIBUTED and HTML will
             decode the text as pyglet documents here
             https://pyglet.readthedocs.io/en/latest/programming_guide/text.html
+            With ATTRIBUTED and HTML, styles set in the text win, and the font,
+            color, bold and italic arguments apply to the rest of it.
         **kwargs: passed to :py:class:`~arcade.gui.UIWidget`.
     """
 
@@ -818,7 +849,7 @@ class UITextArea(UIWidget):
         width: float = 400,
         height: float = 40,
         text: str = "",
-        font_name=("arial", "calibri"),
+        font_name=("Liberation Sans", "arial"),
         font_size: float = 12,
         bold=False,
         italic=False,
@@ -846,25 +877,37 @@ class UITextArea(UIWidget):
         # Measured in pixels per 'click'
         self.scroll_speed = scroll_speed if scroll_speed is not None else font_size
 
+        # pyglet 3 reads "weight" and "style", not "bold" and "italic"
+        text_style = dict(
+            # Loads font files and bundled fonts, as arcade.Text does
+            font_name=_attempt_font_name_resolution(font_name),
+            font_size=font_size,
+            color=Color.from_iterable(text_color),
+            weight=_to_weight(bold),
+            style="italic" if italic else "normal",
+        )
+
         self.doc: AbstractDocument
         if document_mode == "PLAIN":
             self.doc = pyglet.text.decode_text(text)
-        elif document_mode == "ATTRIBUTED":
-            self.doc = pyglet.text.decode_attributed(text)
-        elif document_mode == "HTML":
-            self.doc = pyglet.text.decode_html(text)
+            self.doc.set_style(0, len(self.doc.text), text_style)
+        else:
+            if document_mode == "ATTRIBUTED":
+                self.doc = pyglet.text.decode_attributed(text)
+            elif document_mode == "HTML":
+                # The decoder's own defaults (such as Times New Roman) would
+                # otherwise apply wherever the HTML doesn't set a style
+                class _Decoder(HTMLDecoder):
+                    default_style = {**HTMLDecoder.default_style, **text_style}
 
-        self.doc.set_style(
-            0,
-            len(text),
-            dict(
-                font_name=font_name,
-                font_size=font_size,
-                color=Color.from_iterable(text_color),
-                bold=bold,
-                italic=italic,
-            ),
-        )
+                self.doc = _Decoder().decode(text)
+            else:
+                raise ValueError(f"Unknown document_mode: {document_mode!r}")
+            # Styles set in the text win. Only fill in the rest.
+            for attribute, value in text_style.items():
+                runs = self.doc.get_style_runs(attribute).ranges(0, len(self.doc.text))
+                for start, end in [(start, end) for start, end, run in runs if run is None]:
+                    self.doc.set_style(start, end, {attribute: value})
 
         self.layout = pyglet.text.layout.IncrementalTextLayout(
             self.doc,

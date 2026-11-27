@@ -420,7 +420,7 @@ screen as something for the GUI.
     :caption: MyGame.__init__
     :pyobject: MyGame.__init__
     :linenos:
-    :emphasize-lines: 17-19, 23-24
+    :emphasize-lines: 22-24, 28-29
 
 Next up, we need to draw and use the cameras. This complicates our shader as it doesn't
 care about the scrolling, so we have to pass it a position not affected by the camera position.
@@ -430,7 +430,7 @@ Therefore, we subtract it out.
     :caption: MyGame.on_draw
     :pyobject: MyGame.on_draw
     :linenos:
-    :emphasize-lines: 2-3, 21-27, 39-42
+    :emphasize-lines: 2-3, 21-28, 40-43
 
 When we update, we need to scroll the camera to where the user is:
 
@@ -475,3 +475,29 @@ Before I wrote this tutorial I did not know how these shadows were made. I
 found the sample code
 `Simple 2d Ray-Cast Shadow <https://www.shadertoy.com/view/tddXzj>`_ by jt
 which allowed me to very slowly figure out how to cast shadows.
+
+.. Pages linked from this page. Listing them puts them in the
+   sidebar under this page, which shows readers where they are.
+
+.. toctree::
+   :hidden:
+
+   start
+   step_01
+   step_01_diff
+   step_03
+   step_03_diff
+   step_03_gl
+   step_03_gl_diff
+   step_04
+   step_04_gl
+   step_04_gl_diff
+   step_05_gl
+   step_05_gl_diff
+   step_06
+   step_06_gl
+   step_06_gl_diff
+   step_07
+   step_07_diff
+   step_08
+   step_08_diff

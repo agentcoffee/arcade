@@ -1,6 +1,9 @@
 # Release Checklist
 
 1. Check for updated libraries, and if we need to pin a more recent version.
+   * If the minimum Python version changed, update it everywhere: `requires-python` in `pyproject.toml`,
+     the version check in `arcade/__init__.py`, `doc/get_started/install.rst`,
+     `doc/programming_guide/gles_raspi_and_sbc.rst` and `CONTRIBUTING.md`.
 2. Run `ruff arcade`
 3. Run `mypy arcade`
 4. In docs folder, type `make clean` then  `make html` and confirm no warnings/errors.
@@ -8,7 +11,7 @@
 6. Run `tests/test_examples/run_all_examples.py`
 7. Make sure `arcade/examples/asteroid_smasher.py` is playable.
 8. Make sure `arcade/examples/platform_tutorial/17_views.py` is playable.
-9. Update version number in `arcade/version.py`
+9. Update version number in `arcade/_VERSION`
 10. Update :ref:`release_notes` with release dates and any additional
    info needed.
 11. Make sure last check-in ran clean on GitHub actions, viewable on Discord

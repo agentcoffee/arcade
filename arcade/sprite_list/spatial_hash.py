@@ -23,7 +23,7 @@ class ReadOnlySpatialHash(Protocol[SpriteType_co]):
     #. It is then manipulated outside the original context with a broader type
 
     Advanced users who want more information on the specifics should see the
-    comments of :py:class:`~arcade.sprite_list.SpriteList`.
+    comments of :py:class:`~arcade.SpriteList`.
     """
 
     @abstractmethod
@@ -51,7 +51,7 @@ class ReadOnlySpatialHash(Protocol[SpriteType_co]):
         """
         Return sprites in the same buckets as the given rectangle.
 
-        .. tip:: Use :py:mod:`arcade.types.rect`'s helper functions to create
+        .. tip:: Use the helper functions in ``arcade.types.rect`` to create
           rectangle objects!
 
         Args:
@@ -66,9 +66,14 @@ class SpatialHash(ReadOnlySpatialHash[SpriteType]):
     """A data structure best for collision checks with non-moving sprites.
 
     It subdivides space into a grid of squares, each with sides of length
-    :py:attr:`cell_size`. Moving a sprite from one place to another is the
-    same as removing and adding it. Although moving a few can be okay, it
-    can quickly add up and slow down a game.
+    :py:attr:`cell_size`.
+
+    Moving a sprite only marks it as moved. The next query, such as a
+    collision check, puts the moved sprites in their new squares, skipping
+    any still in the same squares. So a sprite that moves several times in
+    a frame is updated once, and moving sprites costs nothing until
+    something checks for collisions. Moving many sprites still adds up and
+    can slow down a game.
 
     Args:
         cell_size:
@@ -91,10 +96,41 @@ class SpatialHash(ReadOnlySpatialHash[SpriteType]):
         width and height.
         """
         # Buckets of sprites per cell
-        self.contents: dict[IPoint, set[SpriteType]] = {}
+        self._contents: dict[IPoint, set[SpriteType]] = {}
         # All the buckets a sprite is in.
         # This is used to remove a sprite from the spatial hash.
-        self.buckets_for_sprite: dict[SpriteType, list[set[SpriteType]]] = {}
+        self._buckets_for_sprite: dict[SpriteType, list[set[SpriteType]]] = {}
+        # The min and max cells each sprite was added to, to skip moves
+        # that stay in the same cells
+        self._cells_for_sprite: dict[SpriteType, tuple[IPoint, IPoint]] = {}
+        # Sprites that moved since the last query
+        self._moved: set[SpriteType] = set()
+
+    @property
+    def contents(self) -> dict[IPoint, set[SpriteType]]:
+        """The sprites in each cell, keyed by cell coordinates."""
+        self._update_moved()
+        return self._contents
+
+    @property
+    def buckets_for_sprite(self) -> dict[SpriteType, list[set[SpriteType]]]:
+        """The cell buckets each sprite is in."""
+        self._update_moved()
+        return self._buckets_for_sprite
+
+    def _update_moved(self) -> None:
+        """Put sprites that moved since the last query in their new cells."""
+        if not self._moved:
+            return
+        moved = self._moved
+        self._moved = set()
+        cells_for_sprite = self._cells_for_sprite
+        for sprite in moved:
+            cells = cells_for_sprite.get(sprite)
+            # Skip sprites removed since, and moves within the same cells
+            if cells is not None and self._get_cell_bounds(sprite) != cells:
+                self.remove(sprite)
+                self.add(sprite)
 
     def hash(self, point: IPoint) -> IPoint:
         """Convert world coordinates to cell coordinates"""
@@ -105,8 +141,18 @@ class SpatialHash(ReadOnlySpatialHash[SpriteType]):
 
     def reset(self):
         """Clear all the sprites from the spatial hash."""
-        self.contents.clear()
-        self.buckets_for_sprite.clear()
+        self._contents.clear()
+        self._buckets_for_sprite.clear()
+        self._cells_for_sprite.clear()
+        self._moved.clear()
+
+    def _get_cell_bounds(self, sprite: BasicSprite) -> tuple[IPoint, IPoint]:
+        """Get the min and max cells covered by a sprite's hit box."""
+        # The hit box caches its bounds, so collision checks can reuse them
+        left, right, bottom, top = sprite.hit_box.get_adjusted_bounds()
+        min_point = self.hash((trunc(left), trunc(bottom)))
+        max_point = self.hash((trunc(right), trunc(top)))
+        return min_point, max_point
 
     def add(self, sprite: SpriteType) -> None:
         """
@@ -115,34 +161,33 @@ class SpatialHash(ReadOnlySpatialHash[SpriteType]):
         Args:
             sprite: The sprite to add
         """
-        min_point = trunc(sprite.left), trunc(sprite.bottom)
-        max_point = trunc(sprite.right), trunc(sprite.top)
-
-        # hash the minimum and maximum points
-        min_point, max_point = self.hash(min_point), self.hash(max_point)
+        min_point, max_point = cells = self._get_cell_bounds(sprite)
         buckets: list[set[SpriteType]] = []
+        contents = self._contents
 
         # Iterate over the rectangular region adding the sprite to each cell
         for i in range(min_point[0], max_point[0] + 1):
             for j in range(min_point[1], max_point[1] + 1):
                 # Add sprite to the bucket
-                bucket = self.contents.setdefault((i, j), set())
+                bucket = contents.setdefault((i, j), set())
                 bucket.add(sprite)
                 # Collect all the buckets we added to
                 buckets.append(bucket)
 
         # Keep track of which buckets the sprite is in
-        self.buckets_for_sprite[sprite] = buckets
+        self._buckets_for_sprite[sprite] = buckets
+        self._cells_for_sprite[sprite] = cells
 
     def move(self, sprite: SpriteType) -> None:
         """
-        Shortcut to remove and re-add a sprite.
+        Mark a sprite as moved.
+
+        It's put in its new cells at the next query, if they changed.
 
         Args:
             sprite: The sprite to move
         """
-        self.remove(sprite)
-        self.add(sprite)
+        self._moved.add(sprite)
 
     def remove(self, sprite: SpriteType) -> None:
         """
@@ -152,32 +197,38 @@ class SpatialHash(ReadOnlySpatialHash[SpriteType]):
             sprite: The sprite to remove
         """
         # Remove the sprite from all the buckets it is in
-        for bucket in self.buckets_for_sprite[sprite]:
+        for bucket in self._buckets_for_sprite[sprite]:
             bucket.remove(sprite)
 
         # Delete the sprite from the bucket tracker
-        del self.buckets_for_sprite[sprite]
+        del self._buckets_for_sprite[sprite]
+        del self._cells_for_sprite[sprite]
+        self._moved.discard(sprite)
+
+    # NOTE: The query methods below use contents.get() rather than
+    # setdefault() so that looking at an empty cell doesn't create a bucket
+    # for it. Otherwise the dict grows with every cell ever queried.
 
     def get_sprites_near_sprite(self, sprite: BasicSprite) -> set[SpriteType]:
-        min_point = trunc(sprite.left), trunc(sprite.bottom)
-        max_point = trunc(sprite.right), trunc(sprite.top)
-
-        # hash the minimum and maximum points
-        min_point, max_point = self.hash(min_point), self.hash(max_point)
+        self._update_moved()
+        min_point, max_point = self._get_cell_bounds(sprite)
         close_by_sprites: set[SpriteType] = set()
+        contents = self._contents
 
         # Iterate over the all the covered cells and collect the sprites
         for i in range(min_point[0], max_point[0] + 1):
             for j in range(min_point[1], max_point[1] + 1):
-                bucket = self.contents.setdefault((i, j), set())
-                close_by_sprites.update(bucket)
+                bucket = contents.get((i, j))
+                if bucket:
+                    close_by_sprites.update(bucket)
 
         return close_by_sprites
 
     def get_sprites_near_point(self, point: Point) -> set[SpriteType]:
+        self._update_moved()
         hash_point = self.hash((trunc(point[0]), trunc(point[1])))
         # Return a copy of the set.
-        return set(self.contents.setdefault(hash_point, set()))
+        return set(self._contents.get(hash_point, ()))
 
     def get_sprites_near_rect(self, rect: Rect) -> set[SpriteType]:
         left, right, bottom, top = rect.lrbt
@@ -187,12 +238,15 @@ class SpatialHash(ReadOnlySpatialHash[SpriteType]):
         # hash the minimum and maximum points
         min_point, max_point = self.hash(min_point), self.hash(max_point)
         close_by_sprites: set[SpriteType] = set()
+        self._update_moved()
+        contents = self._contents
 
         # Iterate over the all the covered cells and collect the sprites
         for i in range(min_point[0], max_point[0] + 1):
             for j in range(min_point[1], max_point[1] + 1):
-                bucket = self.contents.setdefault((i, j), set())
-                close_by_sprites.update(bucket)
+                bucket = contents.get((i, j))
+                if bucket:
+                    close_by_sprites.update(bucket)
 
         return close_by_sprites
 
@@ -203,4 +257,4 @@ class SpatialHash(ReadOnlySpatialHash[SpriteType]):
         # changing the truthiness of the class instance.
         # if spatial_hash will be False if it is empty.
         # For backwards compatibility, we'll keep it as a property.
-        return len(self.buckets_for_sprite)
+        return len(self._buckets_for_sprite)

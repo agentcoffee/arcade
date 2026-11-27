@@ -144,39 +144,99 @@ and storing the list inside a :py:class:`~arcade.Window` or
    self.spritelist_with_hashing = arcade.SpriteList(use_spatial_hash=True)
 
 
+.. _collision_detection_performance_cell_size:
+
+Choosing a Cell Size
+""""""""""""""""""""
+
+The ``spatial_hash_cell_size`` argument sets the size of the grid
+squares, in pixels. The default of 128 works well for typical tiles of
+64 to 128 pixels. For other sprites, choose a cell size about the size of
+the sprites in the list:
+
+* **Cells much bigger than the sprites** make each collision check look at
+  every sprite in the nearby cells. With 4 pixel sprites, 128 pixel cells
+  hold about a thousand of them each.
+* **Cells much smaller than the sprites** put each sprite in many cells, so
+  adding and moving sprites gets slower.
+
+For example, measured on one desktop computer:
+
+.. list-table::
+   :header-rows: 1
+
+   * - Sprites in the list
+     - Cell size 8
+     - Cell size 16
+     - Cell size 64
+     - Cell size 128 (default)
+   * - 4 pixels: 200 collision checks
+     - **2.1 ms**
+     - 2.8 ms
+     - 12.2 ms
+     - 33.4 ms
+   * - 64 pixels: 200 collision checks
+     - 5.7 ms
+     - 2.6 ms
+     - **2.3 ms**
+     - 3.1 ms
+   * - 64 pixels: adding 2,400 sprites
+     - 50.7 ms
+     - 22.9 ms
+     - 13.6 ms
+     - **11.6 ms**
+
+.. code-block:: python
+
+   # Lots of small sprites, such as pixels or bullets
+   self.pixels = arcade.SpriteList(use_spatial_hash=True, spatial_hash_cell_size=16)
+
+See :ref:`sprite_pixel_demolition` for an example with tens of thousands
+of 3 pixel sprites.
+
+
 Spatial Hashing and Tiled Maps
 """"""""""""""""""""""""""""""
-There is also a way to enable spatial hashing when loading Tiled maps. For
-each layer you'd like to load with spatial hashing, set a ``"use_spatial_hashing"``
-key in its layer options to ``True``:
+Layers loaded from Tiled maps with :py:func:`arcade.load_tilemap` get a
+spatial hash by default, so collision checks against walls and platforms
+are fast. For a layer whose sprites move a lot, such as moving platforms,
+turn it off with the ``"use_spatial_hash"`` key in its layer options:
 
 .. code-block:: python
 
    layer_options = {
-        "ground": {
-            "use_spatial_hash": True
-        },
-        "non_moving_platforms": {
-            "use_spatial_hash": True
+        "moving_platforms": {
+            "use_spatial_hash": False
         }
    }
+
+   tile_map = arcade.load_tilemap("my_map.json", layer_options=layer_options)
+
+``load_tilemap`` warns about layer option names it doesn't know, such as a
+misspelled ``"use_spatial_hashing"``.
 
 For a runnable example of this, please see :ref:`camera_platform`. Additional
 examples are linked below in :ref:`collision_performance_spatial_hashing_examples`.
 
 The Catch
 """""""""
-Spatial hashing doubles the cost of moving or resizing sprites.
+Spatial hashing makes moving, rotating or resizing sprites cost more.
 
-However, this doesn't mean we can't *ever* move or resize a sprite!
-Instead, it means we have to be careful about when and how much we
-do so. This is because moving and resizing now consists of:
+Moving a sprite only marks it as moved. The next collision check puts
+every moved sprite back in the right grid squares, which means:
 
-#. Remove it from the internal list of every grid square it is currently in
-#. Add it again by re-computing its new location
+#. Working out which grid squares the sprite's hit box now covers
+#. If they changed, removing it from its old squares and adding it to the
+   new ones
 
-If we only move a few sprites in the list now and then, it can work out.
-When in doubt, test it and see if it works for your specific use case.
+So a sprite that moves several times in a frame is only updated once, and
+one that stays in the same squares isn't moved at all. Even so, moving
+5,000 sprites every frame and then checking for a collision took about
+22 ms in a hashed list, compared with 8 ms in an unhashed one.
+
+This doesn't mean we can't *ever* move a sprite in a hashed list! If we
+only move a few sprites now and then, it works out well. When in doubt,
+test it and see if it works for your specific use case.
 
 .. _collision_performance_spatial_hashing_examples:
 
@@ -292,8 +352,8 @@ Advanced users may want to try pyglet's :py:class:`pyglet.sprite.Sprite`.
 Instead of Arcade's :py:class:`~arcade.SpriteList`, pyglet sprites use a
 mix of the following classes:
 
-* :py:class:`pyglet.graphics.Batch`
-* :py:class:`pyglet.graphics.Group`
+* :py:class:`pyglet.graphics.draw.Batch`
+* :py:class:`pyglet.graphics.draw.Group`
 
 Both pyglet's sprites, groups, and batches are much closer to OpenGL's
 low-level components and will require investing time to learn their features.
@@ -303,15 +363,27 @@ They also lack many of the features you may be used to in Arcade.
 Text drawing performance
 ------------------------
 
-The slowest thing aside from disk access is :meth:`arcade.draw_text`.
+Laying out text is slow, so the fastest text is text that isn't laid out
+again every frame.
 
 To improve performance:
 
-#. Use :py:class:`arcade.Text` instead
-#. (Optional) Pass a pyglet :py:class:`~pyglet.graphics.Batch` object at creation
+#. Use :py:class:`arcade.Text` objects instead of :py:func:`arcade.draw_text`.
+   Create them once, and only change their text when it changes.
+#. Change position, color, and rotation freely. They don't lay out the
+   text again, but changing the text, font, size, or style does.
+#. To change several layout properties at once, do it in a
+   ``with text:`` block, so the text is laid out once.
+#. Add many ``Text`` objects to a pyglet :py:class:`~pyglet.graphics.draw.Batch`
+   and draw them with one call.
+#. If you prefer ``draw_text`` style code, use :py:class:`arcade.TextPool`.
+#. For text that doesn't change but moves, rotates, or scales, use
+   :py:func:`arcade.create_text_sprite` and draw it in a
+   :py:class:`~arcade.SpriteList`.
 
 See the following to learn more:
 
+* :ref:`text_guide`
 * :ref:`drawing_text_objects`
 * :ref:`drawing_text_objects_batch`
 
@@ -346,8 +418,8 @@ However, there are a few exceptions. These are described below, especially
 with streaming audio.
 
 .. [#]
-   This can be dangerous for loading graphics and sprite data due to
-   since OpenGL only allows one thread to touch the OpenGL context.
+   This can be dangerous for loading graphics and sprite data, because
+   OpenGL only allows one thread to touch the OpenGL context.
 
 
 .. _loading_performance_sound:

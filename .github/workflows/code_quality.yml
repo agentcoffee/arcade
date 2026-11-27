@@ -31,29 +31,22 @@ jobs:
       - name: Sync UV project
         run: uv sync
 
+      # Formatting and linting errors fail the check. The later steps still
+      # run when an earlier one fails, so every problem is reported at once.
       - name: Formatting (Ruff)
-        if: success()
-        continue-on-error: true
         run: uv run make.py format --check
 
       - name: Linting (Ruff)
-        if: success()
-        continue-on-error: true
+        if: ${{ !cancelled() }}
         run: uv run make.py ruff-check
 
       - name: Type Checking (MyPy)
-        if: success()
-        continue-on-error: true
+        if: ${{ !cancelled() }}
         run: uv run make.py mypy
 
       - name: Type Checking (Pyright)
-        if: success()
-        continue-on-error: true
+        if: ${{ !cancelled() }}
         run: uv run make.py pyright
-      
-      - name: Build Docs
-        continue-on-error: true
-        run: uv run make.py docs-full
 
   # This is a second job instead of an extra step because it takes the longest
   # So having it as a second job lets it run in parallel to the other checks.

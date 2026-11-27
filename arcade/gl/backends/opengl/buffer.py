@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import weakref
-from ctypes import byref, string_at
+from ctypes import POINTER, byref, c_ubyte, cast
 from typing import TYPE_CHECKING
 
 from pyglet.graphics import core
@@ -30,7 +30,7 @@ class OpenGLBuffer(Buffer):
     types. See :ref:`prog-guide-gl-buffer-protocol-typing` for more
     information.
 
-    .. warning:: Buffer objects should be created using :py:meth:`arcade.gl.Context.buffer`
+    .. warning:: Buffer objects should be created using :py:meth:`arcade.gl.context.Context.buffer`
 
     Args:
         ctx:
@@ -83,6 +83,9 @@ class OpenGLBuffer(Buffer):
         return f"<Buffer {self._glo.value}>"
 
     def __del__(self):
+        # Creating the object can fail before the OpenGL object exists
+        if not hasattr(self, "_glo"):
+            return
         # Intercept garbage collection if we are using Context.gc()
         if self._ctx.gc_mode == "context_gc" and self._glo.value > 0:
             self._ctx.objects.append(self)
@@ -146,16 +149,16 @@ class OpenGLBuffer(Buffer):
         # Manually detect this so it doesn't raise a confusing INVALID_VALUE error
         if size + offset > self._size:
             raise ValueError(
-                (
-                    "Attempting to read outside the buffer. "
-                    f"Buffer size: {self._size} "
-                    f"Reading from {offset} to {size + offset}"
-                )
+                "Attempting to read outside the buffer. "
+                f"Buffer size: {self._size} "
+                f"Reading from {offset} to {size + offset}"
             )
 
         gl.glBindBuffer(gl.GL_ARRAY_BUFFER, self._glo)
         ptr = gl.glMapBufferRange(gl.GL_ARRAY_BUFFER, offset, size, gl.GL_MAP_READ_BIT)
-        data = string_at(ptr, size=size)
+        # Copy through a ctypes array rather than ctypes.string_at, which can't
+        # read 2 GB or more on Windows: its size is a C long
+        data = bytes(cast(ptr, POINTER(c_ubyte * size)).contents)
         gl.glUnmapBuffer(gl.GL_ARRAY_BUFFER)
         return data
 

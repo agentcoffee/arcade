@@ -39,6 +39,8 @@ class BasicSprite:
             Location of the sprite along the X axis in pixels.
         center_y:
             Location of the sprite along the Y axis in pixels.
+        visible:
+            Whether the sprite is drawn.
     """
 
     __slots__ = (
@@ -63,7 +65,6 @@ class BasicSprite:
         center_x: float = 0,
         center_y: float = 0,
         visible: bool = True,
-        **kwargs: Any,
     ) -> None:
         self._position = (center_x, center_y)
         self._depth = 0.0
@@ -279,7 +280,7 @@ class BasicSprite:
 
         See :py:attr:`.scale_x` and :py:attr:`.scale_y` for individual access.
 
-        See :py:meth:`.scale_multiply_uniform` for uniform scaling.
+        See :py:meth:`.multiply_scale` for uniform scaling.
 
         .. note:: Negative scale values are supported.
 
@@ -684,6 +685,8 @@ class BasicSprite:
         old_scale_x, old_scale_y = self._scale
         new_scale_x = old_scale_x * factor_x
         new_scale_y = old_scale_y * factor_y
+        # Apply scale to hitbox first to raise any exceptions quickly
+        self._hit_box.scale = new_scale_x, new_scale_y
         self._scale = new_scale_x, new_scale_y
 
         tex_width, tex_height = self._texture.size
@@ -726,7 +729,7 @@ class BasicSprite:
 
         Internally, this function does the following:
 
-        1. Multiply the x & y of the sprite's :py:attr:`~scale_xy`
+        1. Multiply the x & y of the sprite's :py:attr:`scale`
            attribute by the corresponding part from ``factors_xy``.
         2. Scale the x & y of the difference between the sprite's
            position and ``point`` by the corresponding component from
@@ -804,6 +807,10 @@ class BasicSprite:
         """
         Check if point is within the current sprite.
 
+        A point exactly on the edge of the hit box counts. Note this is
+        different from :py:meth:`collides_with_sprite`, where sprites that
+        only touch don't count as colliding.
+
         Args:
             point: Point to check.
         Returns:
@@ -816,6 +823,9 @@ class BasicSprite:
 
     def collides_with_sprite(self, other: BasicSprite) -> bool:
         """Will check if a sprite is overlapping (colliding) another Sprite.
+
+        Sprites whose hit boxes only touch, sharing an edge or a corner,
+        don't count as overlapping.
 
         Args:
             other: the other sprite to check against.

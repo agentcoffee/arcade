@@ -10,10 +10,9 @@
 
 from collections import defaultdict
 from collections.abc import Iterable
-from typing import TypeGuard, TypeVar
+from typing import TYPE_CHECKING, TypeGuard, TypeVar
 
 from pyglet.event import EVENT_HANDLED, EVENT_UNHANDLED, EventDispatcher
-from pyglet.input import Controller
 from pyglet.math import Vec2
 
 import arcade
@@ -43,6 +42,10 @@ from arcade.gui.surface import Surface
 from arcade.gui.widgets import UIWidget
 from arcade.types import LBWH, AnchorPoint, Point2, Rect
 
+if TYPE_CHECKING:
+    # Importing pyglet.input is slow, so only type checkers do it here
+    from pyglet.input import Controller
+
 W = TypeVar("W", bound=UIWidget)
 
 
@@ -56,8 +59,8 @@ class UIManager(EventDispatcher):
     through the widget tree.
 
     If used within a view :py:meth:`UIManager.enable()` should be called from
-    :py:meth:`View.on_show_view()` and :py:meth:`UIManager.disable()` should be
-    called from :py:meth:`View.on_hide_view()`
+    :py:meth:`~arcade.View.on_show_view` and :py:meth:`UIManager.disable()` should be
+    called from :py:meth:`~arcade.View.on_hide_view`
 
     Supports `size_hint` to grow/shrink direct children dependent on window size.
     Supports `size_hint_min` to ensure size of direct children (e.g. UIBoxLayout).
@@ -285,7 +288,7 @@ class UIManager(EventDispatcher):
                     child._do_render(surface, force)
 
     def enable(self) -> None:
-        """Registers handler functions (`on_...`) to :py:attr:`arcade.gui.UIElement`
+        """Registers handler functions (``on_...``) to the window
 
         on_draw is not registered, to provide full control about draw order,
         so it has to be called by the devs themselves.
@@ -496,27 +499,27 @@ class UIManager(EventDispatcher):
 
         self.trigger_render()
 
-    def on_connect(self, controller: Controller):
+    def on_connect(self, controller: "Controller"):
         """Called when a controller is connected."""
         self.dispatch_ui_event(UIControllerConnectEvent(controller))
 
-    def on_disconnect(self, controller: Controller):
+    def on_disconnect(self, controller: "Controller"):
         """Called when a controller is disconnected."""
         self.dispatch_ui_event(UIControllerDisconnectEvent(controller))
 
-    def on_stick_motion(self, controller: Controller, name: str, value: Vec2):
+    def on_stick_motion(self, controller: "Controller", name: str, value: Vec2):
         return self.dispatch_ui_event(UIControllerStickEvent(controller, name, value))
 
-    def on_trigger_motion(self, controller: Controller, name: str, value: float):
+    def on_trigger_motion(self, controller: "Controller", name: str, value: float):
         return self.dispatch_ui_event(UIControllerTriggerEvent(controller, name, value))
 
-    def on_button_press(self, controller: Controller, button: str):
+    def on_button_press(self, controller: "Controller", button: str):
         return self.dispatch_ui_event(UIControllerButtonPressEvent(controller, button))
 
-    def on_button_release(self, controller: Controller, button: str):
+    def on_button_release(self, controller: "Controller", button: str):
         return self.dispatch_ui_event(UIControllerButtonReleaseEvent(controller, button))
 
-    def on_dpad_motion(self, controller: Controller, value: Vec2):
+    def on_dpad_motion(self, controller: "Controller", value: Vec2):
         return self.dispatch_ui_event(UIControllerDpadEvent(controller, value))
 
     @property

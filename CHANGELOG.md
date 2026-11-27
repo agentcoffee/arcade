@@ -5,11 +5,213 @@ Arcade [PyPi Release History](https://pypi.org/project/arcade/#history) page.
 
 ## Unreleased
 
-### New Features
-- GUI: `UIDropdown` now supports scrolling when options exceed the menu height. New parameters: `max_height`, `invert_scroll`, `scroll_speed`, and `show_scroll_bar`.
+### Fixes
+- Fixed `DefaultTextureAtlas` raising `KeyError` when a texture was added while the garbage collector freed the last other texture with the same image and transform. The collector could run in the middle of adding the new texture, and the freed texture's finalizer removed the slot the new one was about to share. It showed up in CI on Python 3.14, whose garbage collector runs at different times, when loading a tile map.
+- Fixed blocky, uneven text on scaled (HiDPI) displays, such as Windows set to 125% or 150%. Arcade's windows use pyglet's `"stretch"` scaling, so text was rasterized at the window's size and then stretched to fill the larger framebuffer, giving strokes of uneven width. It looked worse after the default font changed to Liberation Sans, which shows the stretching more than Calibri did. `Text`, `draw_text` and GUI text now lay their glyphs out at the framebuffer's resolution and draw them back at the same size, so they're sharp. Nothing changes at a scale of 100%.
+  - Positions and sizes on `Text`, such as `x`, `content_width` and `left`, are still in window units. The pyglet label in `Text.label` uses framebuffer pixels on a scaled display.
+  - Text can come out a few percent wider, because the font is hinted for the larger size.
+  - `create_text_sprite` is unchanged; its texture is the size of the text in window units.
+- Fixed `DefaultTextureAtlas` losing track of textures that share an image, such as every `SpriteSolidColor` size, which share one white image:
+  - Once the first texture with a given image was freed while another was still in use, resizing the atlas, which happens when it fills up, raised `RuntimeError: Empty set in unique textures` and left the atlas half-resized.
+  - If the last texture's finalizer ran before Python had cleared it from the atlas's records, the atlas kept the texture's name after freeing its slot. Adding another texture with that image then raised `Texture '...' not found in UVData`. This showed up as an occasional CI failure.
+- Fixed `Sprite.remove_from_sprite_lists()` raising `AttributeError` for a sprite registered with `register_physics_engine()` on an engine without a `remove_sprite()` method, such as `PhysicsEngineSimple` or `PhysicsEnginePlatformer`. It now only calls `remove_sprite()` on engines that have it.
+- Fixed a window sized with `arcade.get_display_size()` being bigger than the screen with display scaling, such as Windows set to 125% or 150%. Arcade scales windows up by the display scale, but `get_display_size()` returned the screen's size in pixels, so the window was scaled up twice. It now returns the size in window units on Windows and Linux: at 125%, a 1920x1200 screen gives 1536x960, which fills it exactly. On macOS and the web it's unchanged, as they don't scale windows ([#2791](https://github.com/pythonarcade/arcade/issues/2791)).
+- Fixed `arcade.future.background.ParallaxGroup` raising `ZeroDivisionError` the first time its offset changed after a layer was given a depth of 0. Setting a depth of 0 now raises a `ValueError` right away, which says to use `float("inf")` for a layer that doesn't scroll ([#1551](https://github.com/pythonarcade/arcade/issues/1551)).
+- GUI: Fixed a gap between `UIFlatButton`'s border and the edge of the button, half the border's width, which also showed on `UIDropdown` ([#2868](https://github.com/pythonarcade/arcade/issues/2868)).
+- GUI: Passing a single style such as `UIFlatButton.UIStyle()` as a widget's `style` raised a confusing `TypeError` about attribute names. It now raises a `TypeError` saying a dict of styles for each state is needed, and how to start from the widget's `DEFAULT_STYLE` ([#2817](https://github.com/pythonarcade/arcade/issues/2817)).
+- GUI: Fixed `UITextArea`:
+  - With `document_mode="ATTRIBUTED"` or `"HTML"`, the widget's font and color replaced every style set in the text. Styles set in the text now win, and the widget's arguments apply to the rest. In HTML mode they also replace the decoder's own defaults, such as Times New Roman ([#2441](https://github.com/pythonarcade/arcade/issues/2441)).
+  - `bold` and `italic` had no effect, because pyglet 3 reads the `weight` and `style` keys instead.
+  - The text widgets page of the `gui/2_widgets` example now shows its labels in bold.
+- Fixed `arcade.math.rand_vec_spread_deg()` returning vectors in random directions. It passed the angle in degrees to a function that expects radians, so for example the spread emitters in the `particle_systems` example sprayed everywhere ([#2648](https://github.com/pythonarcade/arcade/issues/2648)).
+- Fixed reading 2 GB or more from an OpenGL texture, texture array, framebuffer or buffer on Windows, which failed because `ctypes.string_at` takes its size as a 32-bit C long there ([#2836](https://github.com/pythonarcade/arcade/issues/2836)).
+- Fixed a player in `PhysicsEnginePlatformer` sliding along when standing across two moving platforms. It moved by both platforms' speeds added together, so it slid until it stood on only one. It now moves with the platform it stands on the most, and isn't moved by a platform it only touches the edge of while standing mostly on something still ([#2782](https://github.com/pythonarcade/arcade/issues/2782)).
+- Fixed the PyInstaller hook bundling Arcade's version file at `arcade/VERSION/VERSION`. Frozen apps printed an error on startup and reported `arcade.VERSION` as `0.0.0`, and builds using `collect_all("arcade")` failed because the hook and `collect_all` put a folder and a file at the same path. The version file is now `arcade/_VERSION`, so it can't be confused with the `arcade.version` module ([#2837](https://github.com/pythonarcade/arcade/issues/2837)).
+- Fixed drawing into a texture atlas losing new drawing when the atlas grows during `render_into()`. Nested rendering and exception exits now restore the previous camera and render region.
+- Fixed several `arcade.create_text_sprite()` bugs:
+  - Sprites with the same text shared one image in the texture atlas, so creating a second one (for example in another color or size) changed the first one and drew the second stretched. Each sprite now gets its own image.
+  - `anchor_x="center"` cut off the left half of the text, and `anchor_x="right"` made an empty sprite.
+  - The sprite was placed too high. It now covers the same area as an `arcade.Text` with the same arguments at the same position.
+  - An empty string raised `ValueError`. It now makes a transparent sprite, as documented.
+  - Text sprites went blank when the texture atlas rebuilt itself, which happens when it fills up after some textures were freed. The atlas redraws textures from their images, and a text sprite's image was empty. `sprite.texture.image` now also contains the text.
+  - Text sprites were drawn fainter than the same text drawn directly. Drawing the text into a transparent texture squared its alpha and multiplied its color by the alpha, so the sprite's alpha was applied twice: anti-aliased edges came out darker and thinner, text with partial alpha (for example `(255, 255, 255, 128)`) was nearly invisible, and even with an opaque `background_color` the edges were partly transparent. The texture now has the text's own color and alpha.
+- Fixed an `AttributeError` being printed as "Exception ignored in `__del__`" when creating an OpenGL texture, framebuffer, buffer, program, compute shader, texture array, or vertex array failed, for example with an invalid number of texture components.
+- Fixed `arcade.draw_text()` cache problems: a multiline call and an otherwise equal single-line call shared one label and drew wrong, and animating `rotation` or `font_size` added a cached label every frame, forever. The cache now holds at most 256 labels, forgetting the least recently used.
+- Fixed `arcade.Text` style properties:
+  - Setting `italic` after creating the text had no visible effect. `"oblique"` is now also accepted.
+  - `bold` strings such as `"light"` or `"semibold"` were all treated as bold, including `"normal"`. They now set that font weight, and the `bold` property returns the weight name for weights other than bold and normal.
+  - A `pyglet.text.LinearGradient` color raised `TypeError` in `Text`, `draw_text()`, `create_text_sprite()`, and `UILabel.update_font()`. Gradients now work, and the `color` property returns the gradient.
+  - The `Text` constructor ignored every error while creating the label, so bad arguments such as an unknown keyword or an invalid `font_name` only raised later, the first time the text was used. Only the "no window yet" case is deferred now.
+- Fixed `font_name` paths to font files in `arcade.Text`, `draw_text()`, `create_text_sprite()`, and the `Text.font_name` setter. A path or resource handle such as `":resources:fonts/ttf/Custom.ttf"` used the file name as the font name, so the text was drawn in the default font. The file is now loaded the first time it's used, and its family name is used. Lists of font names, which the docs allow, raised `TypeError` and now work, and a path no longer takes priority over names listed before it.
+- Fixed drawing on scaled (HiDPI) displays, such as Windows set to 125% or 150%:
+  - After the first frame that drew text, the whole game was drawn too small, in the bottom left corner of the window. pyglet sets the window camera's viewport and scissor when it draws text, and Arcade gave them in window units instead of pixels, so they also stayed wrong for everything drawn after. Text was too small even in the first frame, and GUI text was drawn at the wrong size, outside its widget.
+  - `Window.get_pixel_ratio()` returned pyglet's display scale instead of the framebuffer to window size ratio, which differ when pyglet's `dpi_scaling` option is `"platform"`. Everything on screen was then drawn scaled up, cut off at the right and top.
+- Fixed setting `Sprite.hit_box`. The new hit box stayed at (0, 0) with a scale of 1 until the sprite moved or was scaled, so it collided with nothing, and a spatial hash didn't account for its size. It now takes the sprite's position, scale and angle right away.
+- Fixed fast sprites passing through thin walls and platforms in `PhysicsEngineSimple` and `PhysicsEnginePlatformer`. A sprite that moved farther than its own size plus the wall's thickness in one frame jumped over it, for example a player falling fast onto a thin platform. A move longer than the sprite is now checked in steps shorter than the sprite, so it stops at the first wall in the way. Moves shorter than the sprite work exactly as before.
+- Fixed collision checks with `CollisionMethod.GPU` (also chosen automatically for lists of over 1500 sprites without a spatial hash) missing hit boxes that reach beyond a sprite's drawn size, such as a melee attack's reach. The GPU only knows the sprites' drawn sizes, so it now also uses the checking sprite's hit box, and each `SpriteList` keeps track of how far its sprites' hit boxes reach beyond their sizes.
+- Fixed drawing inside `TextureAtlas.render_into()` when the atlas had to rebuild to make room, for example to add a new texture being drawn. A full atlas with freed space rebuilds instead of growing, which moved the texture being drawn into, so the drawing landed on other textures and what was drawn before was lost. While rendering into it, the atlas now grows instead if it can, and a rebuild keeps what was drawn and moves the drawing area with the texture.
+- Fixed a `SpriteList` on WebGL only drawing its first 256 sprites when its storage was created with a capacity over 256: for example `SpriteList(capacity=1000)`, `clear()` on a list that had grown past 256 sprites, or a lazy list with more than 256 sprites before it was first drawn ([#2909](https://github.com/pythonarcade/arcade/issues/2909)).
+- Fixed platformer tutorial steps 7 to 19, the `custom_sprite` example, and the lights tutorial crashing on startup with `AttributeError: property 'camera' ... has no setter`. They stored their camera as `self.camera` on the window, which is the default camera pyglet draws with. Their camera is now `self.world_camera`, and assigning `Window.camera` gives an error saying to use another name.
+- Fixed `arcade.gui.experimental.pixelated_ui()` raising `AttributeError`. It now turns off text anti-aliasing and makes font glyphs use nearest-neighbor filtering, as documented.
+- Fixed `InputManager.parse()` raising `AttributeError`, so a saved input configuration couldn't be loaded.
 
-### Breaking Change
-- Tilemap: Sprites of an object tile layer will now apply visibility of the object.
+### Breaking Changes
+- Removed outdated and duplicate names from the `arcade` namespace ([#2402](https://github.com/pythonarcade/arcade/issues/2402)):
+  - `AnimatedWalkingSprite` and the `FACE_UP`, `FACE_DOWN`, `FACE_LEFT` and `FACE_RIGHT` constants it used. Its docs already called it deprecated and said to write your own sprite class instead. The `sprite_move_animation` example shows how.
+  - `get_game_controllers()`, which did the same as `get_joysticks()`. Its name suggested it returned game controllers, but it returned joysticks. For game controllers, use `get_controllers()`.
+  - `draw_lrbt_rectangle_filled` and `draw_lrbt_rectangle_outline` were each listed twice in `arcade.__all__`.
+- The default font is now Liberation Sans, which comes with Arcade, instead of whichever of Calibri and Arial the computer has ([#1135](https://github.com/pythonarcade/arcade/issues/1135)). Text looks the same on every computer. It applies to `Text`, `draw_text()`, `create_text_sprite()`, `TextPool`, and the GUI's `UILabel`, `UITextArea`, `UIInputText` and buttons (which still use Kenney Future first if you load the Kenney fonts). Liberation Sans has the same letter widths as Arial, so text on Windows, which used Calibri, is about 10% wider. For the old look, pass `font_name=("calibri", "arial")`.
+  - The Liberation fonts load the first time one is used, so `font_name="Liberation Mono"` works without `load_liberation_fonts()`.
+  - `UITextArea` and `UIInputText` accept font file paths and resource handles for `font_name`, like `Text`.
+- `arcade.load_tilemap()` and `TileMap` now give every layer's sprite list a spatial hash by default (`use_spatial_hash=True`) ([#2663](https://github.com/pythonarcade/arcade/issues/2663)). Forgetting it on a wall layer made collision checks against it much slower: 100 bullets checked against 2,000 wall tiles took 48 ms per frame without it and 0.6 ms with it. A hash makes moving a layer's sprites slower, so for a layer whose sprites move a lot, such as moving platforms, turn it off with `layer_options={"Moving Platforms": {"use_spatial_hash": False}}`, or for the whole map with `use_spatial_hash=False`.
+  - `layer_options` now warns about option names it doesn't know, which it used to ignore. The performance tips page named the option `"use_spatial_hashing"`; it's `"use_spatial_hash"`.
+- `Sprite`, `BasicSprite`, `SpriteSolidColor`, `SpriteCircle` and `TextureAnimationSprite` raise `TypeError` for keyword arguments they don't accept, instead of silently ignoring them. For example, `Sprite(path, hit_box_algorithm=...)` used to do nothing; set the hit box algorithm when loading the texture instead. `Sprite` now takes `visible` as a named argument.
+  - `SpriteSolidColor`, `SpriteCircle` and `TextureAnimationSprite` now pass extra keyword arguments on to `Sprite`, so arguments such as `angle` and `visible` work. They used to be dropped.
+  - This found arguments that had silently done nothing: tilemap image layers passed `filename` and `hit_box_algorithm`, animated tiles passed `path_or_texture`, and platform tutorial steps 19 and 20 passed `scaling` instead of `scale`, so their bullets were drawn at full size instead of 80%.
+- `arcade.math.get_angle_degrees()` now measures clockwise from straight up, like `Sprite.angle`: 0 is up, 90 is right, 180 is down and -90 is left. It used to measure clockwise from the right, which disagreed with `get_angle_radians()`, which already measured from up ([#2754](https://github.com/pythonarcade/arcade/issues/2754)). The two now always give the same angle in different units. A sprite whose image points up faces a point with `sprite.angle = get_angle_degrees(...)`. For the old value, subtract 90.
+  - Fixed the `sprite_rotate_around_tank` example's corrected barrel, which sat 90 degrees off from the mouse, and updated `turn_and_move` for the new angles. `turn_and_move`'s sprite also now stops when moving straight along an axis, which it never did.
+
+### New Features
+- Added a keyword-only `decoder` argument to `arcade.Sound` and `arcade.load_sound`, allowing a specific pyglet `MediaDecoder` to load audio without subclassing `Sound` or registering the decoder globally ([#2049](https://github.com/pythonarcade/arcade/issues/2049)).
+- Added `arcade.sweep_sprite(sprite, dx, dy, sprite_list)`, which checks the whole path of a moving sprite and returns a `SweepInfo` for the first sprite it would hit (the `sprite`, how far along the move as a `fraction` and `distance`, and the surface `normal`), or `None`. Fast sprites can't pass through thin walls this way. A sprite that already overlaps one is an immediate hit. Added the `sprite_bullets_sweep` example comparing it with a plain collision check.
+- Added the `sprite_pixel_demolition` example, a stress test where every pixel of the Arcade logo is a sprite (28,000, or 71,000 with smaller pixels) and exploding bullets knock them loose as debris. Debris can move as Python sprites or on the GPU with a shader (press G), which keeps 60 FPS with 15,000 pieces in flight.
+- Added `arcade.sweep_line(start, end, sprite_list)`, which returns a `SweepInfo` for the first sprite a line hits (its `fraction`, `distance`, and surface `normal`), or `None`. It's `sweep_sprite` for a point: for lasers, hitscan weapons, or seeing what's in the way. Added the `sprite_laser_mirrors` example, where a laser bounces off rotating mirrors using the normal.
+
+### Misc Changes
+- Ruff's pyupgrade rules are on for `arcade` and `tests`. Type annotations use `list`, `dict`, `X | Y` and `collections.abc` instead of the deprecated `typing` aliases, mostly in `arcade.gl` ([#2676](https://github.com/pythonarcade/arcade/issues/2676)). Nothing changes at runtime.
+- Sped up moving sprites in a `SpriteList` with a spatial hash ([#1568](https://github.com/pythonarcade/arcade/issues/1568)). Moving, rotating or resizing a sprite used to remove it from the hash and add it again every time. Now it's only marked as moved, and the next collision check updates each moved sprite once, skipping any still in the same cells. Moving 5,000 hashed sprites with `center_x += 1` and `center_y += 1` went from 36 to 8 ms per frame, or from 39 to 22 ms with a collision check after. Collision checks with nothing moving cost the same. `SpatialHash.contents` and `buckets_for_sprite` are now properties that apply pending moves first.
+- `draw_lines`, `draw_points`, `draw_line_strip`, `draw_polygon_filled` and `draw_polygon_outline` raise a `ValueError` naming the first point that isn't 2 numbers, such as `point_list[2] is 7, but each point must be 2 numbers, such as (x, y)` ([#2215](https://github.com/pythonarcade/arcade/issues/2215)). Before, a bad point raised a confusing error like `'int' object is not iterable`, and in `draw_lines`, `draw_points` and `draw_line_strip` a point with 1 or 3 numbers silently shifted every number after it. The check costs one length comparison per call, and the points are now converted faster: drawing 1,000 lines or points went from about 137 to 90 µs per call.
+- The card game tutorial no longer passes `hit_box_algorithm="None"` to `Sprite`, an Arcade 2 argument that `Sprite` silently ignores. Its text no longer says hit box calculation is slow: loading all 52 cards with their default hit boxes takes about 40 ms.
+- Removed the docs build's workaround for Sphinx not copying changed CSS files (`util/sphinx_static_file_temp_fix.py` and its `.ENABLE_DEVMACHINE_SPHINX_STATIC_FIX` switch). Sphinx fixed it upstream, and the pinned Sphinx 9.1.0 copies changed CSS on incremental builds and with `make.py serve` ([#2266](https://github.com/pythonarcade/arcade/issues/2266)).
+- Docs fixes:
+  - The install guide, SBC guide and contributing guide said Arcade needs Python 3.9; it needs 3.10. The release checklist now lists everywhere the minimum version appears ([#1302](https://github.com/pythonarcade/arcade/issues/1302)).
+  - `ShapeElementList`'s docstring links to `pyglet.shapes`, and says "batch" where it said "back" ([#2608](https://github.com/pythonarcade/arcade/issues/2608)).
+  - The `gui/1_layouts` example uses the bundled Liberation Sans instead of fonts most systems don't have ([#2743](https://github.com/pythonarcade/arcade/issues/2743)).
+  - `create_text_sprite()` no longer warns that its sprite draws as a black box in a sprite list with a different texture atlas. That stopped being true in 4.0, when text sprites started keeping their image ([#1883](https://github.com/pythonarcade/arcade/issues/1883)).
+- Sped up `arcade.draw_text()`. It no longer flushes OpenGL after every call (an unchanged call went from 76 to 15 µs), and several lines drawn in the same style each keep their own cached label instead of re-laying out one label every call (5 static lines went from 1.24 ms to 0.08 ms per frame). Any number of lines can share a style. A line whose text changes reuses its own label from the previous frame, found by the clock's tick count, instead of making a new one.
+- Sped up `arcade.Text` updates. Setting a property to the value it already has no longer lays out the text again (for example `font_size`, `bold`, or `width` went from about 165 µs to under 1 µs), and a `with text:` block only lays out the text if something in it needs a new layout. An unchanged `arcade.TextPool` frame with 5 lines went from 760 µs to 6 µs.
+- Added a "Drawing Text" page to the programming guide: choosing between `draw_text`, `Text`, `TextPool`, and `create_text_sprite`, what's slow and fast to change, batches, fonts (names, font files, and the bundled Kenney and Liberation fonts), and styles. Updated the text section of the performance tips, and the `draw_text` warning and docstring, which overstated how slow it is.
+- Tile maps no longer use Pillow's `Image.getdata()`, which is deprecated and will be removed in Pillow 14, to apply an image layer's transparent color. It's done with Pillow operations instead, which is also faster (a 1024x600 image went from 76 ms to 4 ms).
+- Sped up removing many sprites from a large `SpriteList`, such as every bullet that hit something this frame. `SpriteList.remove()`, and so `Sprite.remove_from_sprite_lists()` and `kill()`, used to search the whole list for each sprite. Removals now wait until the list is next used, and many are applied in one pass: removing 100 sprites from 41,000 went from 19 ms to 3.3 ms, and 500 from 166,000 went from 630 ms to 17 ms. Drawing order is kept, and a few removals cost the same as before.
+- Documented choosing a spatial hash cell size (`spatial_hash_cell_size`) in the performance tips and the `SpriteList` docs: about the size of the sprites in the list. With 4 pixel sprites, collision checks were 16 times faster with 8 pixel cells than with the default of 128.
+- Type checking with mypy and pyright now fails the CI check, like formatting and linting. Their existing errors are fixed.
+- Fixed code excerpts in the docs that highlighted or showed the wrong lines, because the example code had changed since their line numbers were set. This covers 62 excerpts: 48 in the platformer, pymunk platformer, menu, card game, compute shader, raycasting and shader toy glow tutorials, and 14 on example pages. Most now highlight the same code they were written for. Where the code was rewritten, they highlight the code that does the same job now.
+- Removed `arcade/experimental/perspective_parallax.py`, an unreferenced demo of `PerspectiveProjector` that didn't show a parallax effect. The `background_parallax` example shows parallax scrolling.
+- Sped up `import arcade` from about 2.7 to 0.9 seconds on Windows ([#1159](https://github.com/pythonarcade/arcade/issues/1159)). Most of the time went to pyglet looking for game controllers when imported. Arcade now imports the controller code the first time `get_controllers()`, `ControllerManager` or `get_joysticks()` is used, so the wait happens then instead. Sound still loads at import, so playing the first sound doesn't pause the game.
+  - Arcade's extra controller mappings now load at the same time. Code that calls `pyglet.input.get_controllers()` directly without using Arcade's controller functions first only gets pyglet's own mappings.
+
+## 4.0.0.dev8
+
+### Breaking Changes
+- Updated pyglet to 3.0.dev11 (from 3.0.dev8). Arcade's library code needed no changes (only its docs build configuration did); these mostly affect code that uses pyglet directly.
+  - `pyglet.graphics.ShaderProgram` now requires a `vertex_layout` keyword argument (a `pyglet.graphics.VertexLayout`, or `None` to infer it from the shader). `create_vertex_layout()` and `set_instance_attributes()` are replaced by `VertexLayout` and `get_vertex_view()`. Arcade's own shaders use `arcade.gl` and are unaffected.
+  - pyglet graphics resources (textures, buffers, shaders, framebuffers, ...) now have a backend `handle` and a stable `key`. The `.id` attribute is deprecated; use `.handle` for backend calls and `.key` for equality and caching. `MouseCursor.gl_drawable` was renamed to `MouseCursor.api_drawable`.
+  - `pyglet.gui` was rewritten around a new `UIManager`. This doesn't affect `arcade.gui`.
+  - Pressing Ctrl+C now stops `arcade.run()` cleanly through `pyglet.app.exit` instead of raising `KeyboardInterrupt` (except in headless mode, which uses its own loop).
+  - On macOS 14 and later, pyglet can now drive window redraws from the display (`pyglet.options.osx_displaylink`). Arcade schedules its own frames, so its update and draw rates are unaffected.
+
+### Fixes
+- Fixed `check_for_collision` (and the list-based collision functions) missing collisions when a sprite was flipped with a negative scale. The negative width/height cancelled out in the broad-phase distance check, so flipped sprites could pass through each other.
+- Fixed `SpatialHash` queries (`get_sprites_near_sprite`, `get_sprites_near_point`, `get_sprites_near_rect`, and the collision functions that use them) adding an empty bucket for every grid cell they looked at. Memory use grew as sprites moved around large maps. Queries and adding sprites to a spatial hash are also faster, since the hit box points are now scanned once instead of four times.
+- Fixed `are_polygons_intersecting` (and sprite collision checks) always returning `False` when a polygon had a repeated point, such as a closed polygon whose first point is repeated at the end.
+- Rotated hit boxes at right angles (90, 180, 270 degrees, etc.) now have exact point coordinates. Before, values like `sin(radians(180))` being about 1.2e-16 instead of 0 left tiny errors that could make exactly touching sprites count as colliding, or not, differently from unrotated ones.
+- Fixed sprite collision checks missing collisions when a sprite's hit box is bigger than its texture, such as a custom hit box used as a melee reach area. The quick distance check estimated each sprite's size from its texture; it now uses the actual hit box, cached until the scale changes. This also makes the check tighter for most sprites, so brute-force list checks are about 20-40% faster.
+- Fixed `Sprite.rescale_relative_to_point()` (and `SpriteList.rescale()`, which uses it) not rescaling the sprite's hit box. The sprite was drawn at its new size but collided, and was placed in spatial hashes, at its old size.
+- `check_for_collision_with_lists` no longer returns the same sprite more than once when it's in more than one of the lists.
+- `CollisionMethod.SPATIAL` (`method=1`) on a sprite list without a spatial hash now chooses the same way as `AUTO`, checking every sprite in lists of 1500 or fewer. Before, it always used the GPU, which is slow when called many times per frame and needed an open window.
+- Documented that sprites whose hit boxes only touch don't count as colliding, while a point exactly on a hit box's edge does count for `get_sprites_at_point` and `collides_with_point`. Corrected `get_sprites_in_rect`'s docs, which said touching sprites were included.
+- Fixed `SpriteList.pop()` with a negative index other than `-1` (such as `pop(-2)`) drawing the wrong sprites: the removed sprite stayed on screen and another sprite disappeared.
+- Fixed `SpriteList.rescale()` moving the list's center while rescaling, so sprites after the first were scaled around the wrong point.
+- Fixed `SpriteList.preload_textures()` raising `AttributeError` on a lazy sprite list that hadn't been drawn yet. It now preloads into the atlas the list will use.
+- Fixed GPU collision checks (`CollisionMethod.GPU`, also used automatically for sprite lists over 1500 sprites without a spatial hash) missing sprites flipped with a negative scale, whose negative width or height made them look smaller than they are.
+- Fixed `SpriteList.__setitem__` raising when setting a negative index to the sprite already there, such as `sprite_list[-1] = sprite_list[-1]`.
+- Fixed `PhysicsEngineSimple` and `PhysicsEnginePlatformer` leaving a sprite overlapping a wall after it rotated against the wall while moving sideways. The sideways move was measured from where the sprite was before rotating, undoing the move out of the wall.
+
+### New Features
+- Added `HitBox.get_adjusted_bounds()`, which returns the cached `(left, right, bottom, top)` bounds of the adjusted hit box points.
+- Added `arcade.CollisionMethod`, an enum for the `method` argument of `check_for_collision_with_list` and `check_for_collision_with_lists`: `AUTO`, `SPATIAL`, `GPU`, and `SIMPLE`. It's an `IntEnum`, so the numbers `0` to `3` still work.
+- Added `arcade.has_collision_with_list()` and `arcade.has_collision_with_lists()`, which return `True` as soon as they find a collision. They're faster than checking whether `check_for_collision_with_list()` returns an empty list, by about 18x when many sprites overlap.
+- Added `arcade.check_for_collision_between_lists(list_a, list_b)`, which returns every colliding `(sprite_a, sprite_b)` pair between two lists, such as bullets and enemies. Passing the same list twice returns each pair once.
+- Added `arcade.get_collision_info(sprite1, sprite2)`, which returns a `CollisionInfo` with the smallest move that separates two colliding sprites: a unit `normal` (the direction to move `sprite1`) and a `depth` in pixels, or `None` if they don't collide. For example, `player.position += info.normal * info.depth` pushes a player out of a wall. Correct for convex hit boxes.
+- Added `arcade.get_collision_info_with_list(sprite, sprite_list)`, which returns a `(sprite, CollisionInfo)` pair for each sprite in the list that `sprite` collides with, deepest overlap first. Added the `sprite_push_out` example, which uses it to push a player out of walls, sliding along rotated ones.
+
+### Misc Changes
+- `PhysicsEngineSimple` and `PhysicsEnginePlatformer` now move sprites out of walls exactly, instead of in steps: landing on a floor or ramp and hitting a ceiling stop the sprite exactly at the surface (before, it could stop up to 0.25 px above a floor or 1 px below a ceiling), and rotating into a wall moves the sprite the smallest distance out of it (before, a whole number of pixels). The older searches are kept as a fallback, for example for concave hit boxes. Collisions are also faster: a hard landing went from about 230 to 42 µs, and a ceiling bump from about 104 to 36 µs.
+- Sped up several `SpriteList` operations: `swap()` no longer searches the draw order (about 1000x faster at the end of a 10,000 sprite list), `insert()` and item assignment check membership with a dictionary instead of scanning the list, and drawing uploads only the buffer slots in use instead of the whole capacity (moving one sprite and drawing is 1.6-2.3x faster).
+- The platformer and simple physics engines and `AStarBarrierList` now use `has_collision_with_list(s)` where they only need to know whether there's a collision. Building an `AStarBarrierList` is about 7-9% faster.
+- Sped up sprite collision checks. Sprites that pass the quick distance check are now compared by cached hit box bounds before the polygon test, and the polygon test skips horizontal and vertical edges, which the bounds check already covers. Checks that reach the polygon test are about 2-4x faster, e.g. 8.0 to 2.3 µs for two box hit boxes and 21.6 to 10.2 µs for two default octagon hit boxes. `are_polygons_intersecting` is also faster (7.3 to 1.6 µs for two rectangles).
+- Sped up collision checks further by caching each hit box's distinct edge directions. Parallel edges (such as opposite sides of the default octagon hit boxes, or matching edges on two sprites with the same angle) are only tested once, and the cache is kept when a sprite moves. Two unrotated octagon hit boxes go from 12.0 to 4.6 µs, and two rotated 30° from 20.8 to 6.9 µs.
+- `SpatialHash` now uses the hit box's cached bounds to find a sprite's grid cells, so they're shared with collision checks. Adding, removing, and querying for sprites that haven't moved is about 33-40% faster.
+- Added collision benchmark scripts in `benchmarks/collisions/` (`micro.py`, `hit_box.py`, and `compare_reference.py`, which checks collision results against a simple reference on random sprite pairs) and `benchmarks/spatial_hash/queries.py`.
+- Removed the unfinished `arcade.texture_atlas.atlas_array` and `atlas_bindless` modules. They were empty placeholders marked "do not use", weren't exported, and had failed to import on Python 3.10-3.13 since 4.0's move off Python 3.9.
+- Updated the optional `pymunk` extra to 7.3.0 (from 7.2.0). Packaging-only release (free-threaded CPython and pyodide wheels, improved type hints) with no breaking changes or deprecations.
+
+## 4.0.0.dev7
+
+### Breaking Changes
+- Updated pyglet to 3.0.dev8 (from 3.0.dev7).
+  - `dev8` adds a `Window.camera` setter (assign any `BaseCamera` to change the window's default draw camera). Arcade's `Window.camera`/`default_camera` remain read-only aliases for Arcade's own `DefaultProjector` and are unaffected by this change.
+  - `dev8` adds built-in text effects: `pyglet.text.Stroke`, `pyglet.text.DropShadow`, and `pyglet.text.LinearGradient`, usable via `stroke`/`shadow`/`color` on `pyglet.text.Label`. `arcade.Text` passes `stroke=`/`shadow=` through to pyglet already, but `color=LinearGradient(...)` currently raises inside `arcade.Text`/`Color.from_iterable`, which assumes a plain RGBA tuple — Arcade does not yet support gradient fills. Advanced users who want a gradient fill today can create a `pyglet.text.Label` directly instead of `arcade.Text`.
+
+## 4.0.0.dev6
+
+### New Features
+- GUI: Added an experimental animation API in `arcade.gui.experimental` — `UIAnimatedGroup` wraps a widget subtree and tweens its transform properties over time via `animate()`.
+  - `UIAnimatedGroup` caches its subtree into a surface and exposes non-layouting transform properties (`scale`, `angle`, `alpha`, `offset_x`, `offset_y`, `tint`); it is interactive, hit-testing `hovered`/`pressed`/`on_click` against its untransformed rect. `UIRenderGroup` is the non-interactive caching primitive.
+  - `animate()` supports multiple properties per call, sequencing via `then()`, repetition (`repeat`, `yoyo`), relative targets (`rel()`), easing, delays and `on_finish` callbacks.
+  - Animations are resolved per property: starting a new animation takes over its properties from running ones, other properties keep animating.
+  - Interpolates numbers, tuples, `Color` and vector types; non-interpolatable values snap at the end.
+  - The low level `Transition*` classes remain available for custom behavior.
+
+### Fixes
+
+- GUI: Fixed `UILabel.update_font` always reporting a font change when the requested font was a fallback tuple (e.g. `UIFlatButton`'s default styles), which caused a full UI re-render every frame. This made widget-heavy UIs, such as the `exp_scroll_area` example, run at a few FPS.
+- Fixed `rotate_around_point` missing from `arcade.math.__all__`, which made it unavailable via `from arcade.math import *`.
+
+### Breaking Changes
+- Updated pyglet to 3.0.dev7 (from 3.0.dev3).
+  - Between `dev4` and `dev5`, pyglet removed `window._matrices` and moved window view/projection/viewport onto its own camera (`default_camera` in dev5/dev6, renamed to `camera` in dev7), backed by a per-frame ring-buffer UBO. Arcade now fully owns its own window matrix UBO, independent of pyglet's camera/ring buffer, so rendering behavior for cameras, sprites, and shapes is unchanged.
+  - Advanced users who mix raw pyglet camera/window code with Arcade should note: `window._matrices` no longer exists, and `window.camera` (pyglet's `default_camera` prior to dev7) is pyglet's own concept (a `Camera2D`), distinct from `arcade.Window.default_camera` (Arcade's own `DefaultProjector`) — both exist simultaneously and serve different roles. `arcade.Window` now also exposes a `camera` property as an alias for `default_camera`, matching pyglet's dev7 rename.
+  - Fixed `BackgroundTexture` scale and offset producing incorrect visual transforms — Arcade's code was inadvertently relying on bugs in pyglet's pre-dev7 `Mat3.scale`/`Mat3.translate` that have since been fixed upstream. Visual output for `BackgroundTexture` users with non-default `scale`/`offset` values will change to be correct.
+
+### Misc Changes
+- Resolved security vulnerabilities in the `setuptools`, `click`, and `typer` dependencies (`typer` bumped to 0.27.1) via `uv audit`/`uv lock`.
+
+## 4.0.0.dev5
+
+### New Features
+- GUI: Added `UIInteractiveSpriteWidget` — combines `UIInteractiveWidget` and `UISpriteWidget` to make sprites clickable and hoverable in the UI tree. See [#2847](https://github.com/pythonarcade/arcade/pull/2847)
+  - Supports `hovered`, `pressed`, and `disabled` states with `on_click` event dispatch.
+  - Widget size defaults to the sprite's texture dimensions, overridable with explicit `width`/`height`.
+- Added `TextPool` - provides a mechanism for caching Text objects for re-use
+
+### Fixes
+
+- Fixed an issue where pixel scaling for high-dpi displays did not work correctly in web browsers via Pyodide. See [#2846](https://github.com/pythonarcade/arcade/pull/2846)
+- Fixed issues with update/draw rate handling that changes with Pyglet 3, rates are now handled properly between desktop and browser. See [#2845](https://github.com/pythonarcade/arcade/pull/2845)
+- Fixed caret behavior not responding appropriately when activating an input field. See [#2850](https://github.com/pythonarcade/arcade/pull/2850)
+
+## 4.0.0.dev4
+
+### New Features
+- Added `pixel_perfect` option for 1:1 pixel ratio rendering, ignoring OS DPI scaling. See [#2841](https://github.com/pythonarcade/arcade/pull/2841)
+- Added `apply_torque` and `set_angular_velocity` wrappers for the Pymunk physics engine. See [#2838](https://github.com/pythonarcade/arcade/pull/2838)
+- Added file drop support in application window via `file_drops` parameter. See [#2825](https://github.com/pythonarcade/arcade/pull/2825)
+- New hexagon utilities module. See [#2695](https://github.com/pythonarcade/arcade/pull/2695)
+- New CLI infrastructure. See [#2828](https://github.com/pythonarcade/arcade/pull/2828)
+- GUI: `UIDropdown` now supports scrolling when options exceed the menu height. New parameters: `max_height`, `invert_scroll`, `scroll_speed`, and `show_scroll_bar`. See [#2833](https://github.com/pythonarcade/arcade/pull/2833)
+- GUI: Warning when layout width/height is given but size_hint will override it. See [#2834](https://github.com/pythonarcade/arcade/pull/2834)
+
+### Fixes
+- Fixed angle negation for Pymunk physics engine to ensure correct sprite rotation. See [#2840](https://github.com/pythonarcade/arcade/pull/2840)
+
+### Breaking Changes
+- Updated pyglet to 3.0.dev3. See [#2842](https://github.com/pythonarcade/arcade/pull/2842)
+- Tilemap: Sprites of an object tile layer will now apply visibility of the object. See [#2829](https://github.com/pythonarcade/arcade/pull/2829)
+
+### Documentation
+- Split doc dependencies into separate group and upgraded Sphinx to 9.1.0. See [#2843](https://github.com/pythonarcade/arcade/pull/2843)
+- Added note about including `arcade.experimental` when compiling with Nuitka. See [#2831](https://github.com/pythonarcade/arcade/pull/2831)
 
 ## 4.0.0.dev3
 

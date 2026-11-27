@@ -8,7 +8,7 @@ A Python simple, easy to use module for creating 2D games.
 # Error out if we import Arcade with an incompatible version of Python.
 import sys
 import os
-from typing import Final
+from typing import TYPE_CHECKING, Final
 
 from pathlib import Path
 
@@ -138,9 +138,9 @@ from .draw import draw_lbwh_rectangle_outline
 from .screenshot import get_image
 from .screenshot import get_pixel
 
-# We don't have joysticks game controllers in headless mode
-if not headless:
-    from .joysticks import get_game_controllers
+# Game controllers are imported on first use, because pyglet lists the
+# input devices when imported. See __getattr__ at the bottom of this file.
+if TYPE_CHECKING:
     from .joysticks import get_joysticks
     from .controller import ControllerManager
     from .controller import get_controllers
@@ -161,13 +161,8 @@ from .sound import load_sound
 from .sound import play_sound
 from .sound import stop_sound
 
-from .sprite import FACE_DOWN
-from .sprite import FACE_LEFT
-from .sprite import FACE_RIGHT
-from .sprite import FACE_UP
 from .sprite import TextureAnimationSprite
 from .sprite import load_animated_gif
-from .sprite import AnimatedWalkingSprite
 from .sprite import TextureAnimation
 from .sprite import TextureKeyframe
 from .sprite import PyMunk
@@ -183,9 +178,19 @@ from .sprite import SpriteSolidColor
 
 from .sprite_list import SpriteList
 from .sprite_list import SpriteSequence
+from .sprite_list import CollisionInfo
+from .sprite_list import CollisionMethod
+from .sprite_list import SweepInfo
 from .sprite_list import check_for_collision
+from .sprite_list import get_collision_info
+from .sprite_list import get_collision_info_with_list
+from .sprite_list import sweep_line
+from .sprite_list import sweep_sprite
 from .sprite_list import check_for_collision_with_list
 from .sprite_list import check_for_collision_with_lists
+from .sprite_list import check_for_collision_between_lists
+from .sprite_list import has_collision_with_list
+from .sprite_list import has_collision_with_lists
 from .sprite_list import get_closest_sprite
 from .sprite_list import get_sprites_at_exact_point
 from .sprite_list import get_sprites_at_point
@@ -257,6 +262,7 @@ from .text import (
     load_font,
     create_text_sprite,
     Text,
+    TextPool,
 )
 
 __all__ = [
@@ -271,16 +277,11 @@ __all__ = [
     "PSControllerButtons",
     "XBoxControllerButtons",
     "AStarBarrierList",
-    "AnimatedWalkingSprite",
     "TextureAnimationSprite",
     "TextureAnimation",
     "TextureKeyframe",
     "ArcadeContext",
     "ControllerManager",
-    "FACE_DOWN",
-    "FACE_LEFT",
-    "FACE_RIGHT",
-    "FACE_UP",
     "MOUSE_BUTTON_LEFT",
     "MOUSE_BUTTON_MIDDLE",
     "MOUSE_BUTTON_RIGHT",
@@ -309,8 +310,12 @@ __all__ = [
     "SpriteCircle",
     "SpriteList",
     "SpriteSequence",
+    "CollisionInfo",
+    "CollisionMethod",
+    "SweepInfo",
     "SpriteSolidColor",
     "Text",
+    "TextPool",
     "Texture",
     "TextureCacheManager",
     "SpriteSheet",
@@ -324,8 +329,15 @@ __all__ = [
     "Window",
     "astar_calculate_path",
     "check_for_collision",
+    "get_collision_info",
+    "get_collision_info_with_list",
+    "sweep_line",
+    "sweep_sprite",
     "check_for_collision_with_list",
     "check_for_collision_with_lists",
+    "check_for_collision_between_lists",
+    "has_collision_with_list",
+    "has_collision_with_lists",
     "close_window",
     "disable_timings",
     "draw_arc_filled",
@@ -338,8 +350,6 @@ __all__ = [
     "draw_line_strip",
     "draw_lines",
     "draw_lrbt_rectangle_filled",
-    "draw_lrbt_rectangle_filled",
-    "draw_lrbt_rectangle_outline",
     "draw_lrbt_rectangle_outline",
     "draw_parabola_filled",
     "draw_parabola_outline",
@@ -365,7 +375,6 @@ __all__ = [
     "get_distance_between_sprites",
     "get_sprites_in_rect",
     "get_controllers",
-    "get_game_controllers",
     "get_image",
     "get_joysticks",
     "get_pixel",
@@ -422,15 +431,23 @@ __all__ = [
 
 __version__ = VERSION
 
-# Piggyback on pyglet's doc run detection
-if not getattr(sys, "is_pyglet_doc_run", False):
-    # Load additional game controller mappings to Pyglet
-    if not headless:
-        try:
-            import pyglet.input.controller
+_LAZY_IMPORTS: dict[str, str] = {}
+# We don't have joysticks game controllers in headless mode
+if not headless:
+    _LAZY_IMPORTS = {
+        "get_joysticks": "joysticks",
+        "joysticks": "joysticks",
+        "ControllerManager": "controller",
+        "get_controllers": "controller",
+        "controller": "controller",
+    }
 
-            mappings_file = resources.resolve(":system:gamecontrollerdb.txt")
-            # TODO: remove string conversion once fixed upstream
-            pyglet.input.controller.add_mappings_from_file(str(mappings_file))
-        except AssertionError:
-            pass
+
+def __getattr__(name: str):
+    module_name = _LAZY_IMPORTS.get(name)
+    if module_name is None:
+        raise AttributeError(f"module 'arcade' has no attribute {name!r}")
+    import importlib
+
+    module = importlib.import_module(f".{module_name}", __name__)
+    return module if name == module_name else getattr(module, name)

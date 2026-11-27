@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import typing
 import weakref
+from collections.abc import Iterable
 from ctypes import (
     POINTER,
     byref,
@@ -13,7 +14,7 @@ from ctypes import (
     create_string_buffer,
     pointer,
 )
-from typing import TYPE_CHECKING, Any, Iterable
+from typing import TYPE_CHECKING, Any
 
 from pyglet.graphics import core
 from pyglet.graphics.api import gl
@@ -43,7 +44,8 @@ class OpenGLProgram(Program):
     Transform feedback also supported when output attributes
     names are passed in the varyings parameter.
 
-    The best way to create a program instance is through :py:meth:`arcade.gl.Context.program`
+    The best way to create a program instance is through
+    :py:meth:`arcade.gl.context.Context.program`
 
     Args:
         ctx:
@@ -164,12 +166,15 @@ class OpenGLProgram(Program):
             weakref.finalize(self, OpenGLProgram.delete_glo, self._ctx, glo)
 
     def __del__(self):
+        # Creating the object can fail before the OpenGL object exists
+        if not hasattr(self, "_glo"):
+            return
         # Intercept garbage collection if we are using Context.gc()
         if self._ctx.gc_mode == "context_gc" and self._glo > 0:
             self._ctx.objects.append(self)
 
     @property
-    def ctx(self) -> "Context":
+    def ctx(self) -> Context:
         """The context this program belongs to."""
         return self._ctx
 
@@ -543,7 +548,7 @@ class OpenGLProgram(Program):
             gl.glGetProgramiv(glo, gl.GL_INFO_LOG_LENGTH, length)
             log = c_buffer(length.value)
             gl.glGetProgramInfoLog(glo, len(log), None, log)
-            raise ShaderException("Program link error: {}".format(log.value.decode()))
+            raise ShaderException(f"Program link error: {log.value.decode()}")
 
     def __repr__(self):
-        return "<Program id={}>".format(self._glo)
+        return f"<Program id={self._glo}>"

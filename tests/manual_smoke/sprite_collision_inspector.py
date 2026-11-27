@@ -1,12 +1,13 @@
 import builtins
-from typing import TypeVar, Type, Generic, Any, Callable
+from collections.abc import Callable
+from typing import Any, Generic, TypeVar
 
 from pyglet.math import Vec2
 
 import arcade
-from arcade import SpriteList, Sprite, SpriteSolidColor, load_texture
-from arcade.gui import UIManager, NinePatchTexture, UIInputText, UIWidget, UIBoxLayout
-from arcade.types import RGBOrA255, Color
+from arcade import Sprite, SpriteList, SpriteSolidColor, load_texture
+from arcade.gui import NinePatchTexture, UIBoxLayout, UIInputText, UIManager, UIWidget
+from arcade.types import Color, RGBOrA255
 
 GRID_REGULAR = arcade.color.GREEN.replace(a=128)
 GRID_HIGHLIGHT = arcade.color.GREEN
@@ -27,7 +28,7 @@ def _tname(t: Any) -> str:
 class TypedTextInput(UIInputText, Generic[T]):
     def __init__(
         self,
-        parsed_type: Type[T],
+        parsed_type: type[T],
         *,
         to_str: Callable[[T], str] = repr,
         from_str: Callable[[str], T] | None = None,
@@ -65,7 +66,7 @@ class TypedTextInput(UIInputText, Generic[T]):
             **kwargs,
         )
         self._error_color = error_color
-        self._parsed_type: Type[T] = parsed_type
+        self._parsed_type: type[T] = parsed_type
         self._to_str = to_str
         self._from_str = from_str or parsed_type
         self._parsed_value: T = self._from_str(self.text)

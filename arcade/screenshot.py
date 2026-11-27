@@ -14,6 +14,10 @@ def get_pixel(x: int, y: int, components: int = 3) -> tuple[int, ...]:
     """
     Given an x, y, will return a color value of that point.
 
+    .. note:: Call this at the end of ``on_draw``, after drawing. Once a
+              frame has been shown, such as in ``on_key_press``, the
+              screen's contents are undefined and may read as black.
+
     Args:
         x: x location
         y: y location
@@ -43,11 +47,29 @@ def get_image(
     """
     Get an image from the screen.
 
+    .. note:: Call this at the end of ``on_draw``, after drawing. Once a
+              frame has been shown, such as in ``on_key_press``, the
+              screen's contents are undefined and may read as black.
+
     Example::
 
-        # Create and image of the entire screen and save it to a file
+        # At the end of on_draw, save an image of the entire screen
         image = arcade.get_image()
         image.save('screenshot.png')
+
+    To take a screenshot when a key is pressed, set a flag in
+    ``on_key_press`` and save the image in ``on_draw``::
+
+        def on_key_press(self, key, modifiers):
+            if key == arcade.key.F12:
+                self.take_screenshot = True
+
+        def on_draw(self):
+            self.clear()
+            # ... draw everything ...
+            if self.take_screenshot:
+                arcade.get_image().save('screenshot.png')
+                self.take_screenshot = False
 
     Args:
         x: Start (left) x location

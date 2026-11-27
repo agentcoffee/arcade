@@ -20,7 +20,7 @@ The Python Arcade Library
 
 Arcade is an easy-to-learn Python library for creating 2D games and more. The
 friendly API caters to both beginners and experts alike. Do you want to craft
-craft your take on a 2D classic, or explore the full power of shaders? It's up to you.
+your take on a 2D classic, or explore the full power of shaders? It's up to you.
 
 What will you make?
 
@@ -46,11 +46,6 @@ learn more:
 * :ref:`intro_learning_resources` covers the documentation types
 * :ref:`how-to-get-help` if you're unsure where to start
 
-.. pending: #2433 https://github.com/pythonarcade/arcade/issues/2433
-.. raw:: html
-
-   <br/>
-
 More than Open Source
 ---------------------
 
@@ -59,11 +54,6 @@ Arcade makes sure licensing concerns stay out of your way:
 * Arcade's code uses the :ref:`permissive_mit`
 * :ref:`The built-in resources <resources>` don't require attribution
 * Remixing :ref:`example code <example-code>` is encouraged
-
-.. pending: #2433 https://github.com/pythonarcade/arcade/issues/2433
-.. raw:: html
-
-   <br/>
 
 This ensures you are free to create, including :ref:`commercial projects <faq_commercial>`.
 
@@ -78,18 +68,8 @@ to reach the team or ask for help:
 * The `Arcade Discord`_ server
 * The `Arcade GitHub`_ repo
 
-.. pending: #2433 https://github.com/pythonarcade/arcade/issues/2433
-.. raw:: html
-
-   <br/>
-
 See :ref:`how-to-contribute` to learn how you can
 help improve Arcade.
-
-.. pending: #2433 https://github.com/pythonarcade/arcade/issues/2433
-.. raw:: html
-
-   <br/>
 
 .. The main table of contents defining the sidebar navigation
    This content is not part of the main page itself.
@@ -124,6 +104,8 @@ help improve Arcade.
    programming_guide/input/index
    programming_guide/sound
    programming_guide/textures
+   programming_guide/text
+   programming_guide/windows_and_views
    programming_guide/event_loop
    programming_guide/camera
    programming_guide/sections

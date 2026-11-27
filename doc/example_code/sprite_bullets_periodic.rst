@@ -1,5 +1,3 @@
-:orphan:
-
 .. _sprite_bullets_periodic:
 
 Have Enemies Periodically Shoot
@@ -21,4 +19,4 @@ to this example.
 .. literalinclude:: ../../arcade/examples/sprite_bullets_periodic.py
     :caption: sprite_bullets_periodic.py
     :linenos:
-    :emphasize-lines: 14-48, 76-79, 86-89, 107-108
+    :emphasize-lines: 14-48, 79-84, 91-94, 112-113

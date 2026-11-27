@@ -1,5 +1,3 @@
-:orphan:
-
 .. _sprite_move_keyboard:
 
 Move By Keyboard
@@ -13,4 +11,4 @@ Move By Keyboard
 .. literalinclude:: ../../arcade/examples/sprite_move_keyboard.py
     :caption: sprite_move_keyboard.py
     :linenos:
-    :emphasize-lines: 25-44, 96-97, 99-110, 112-122
+    :emphasize-lines: 25-44, 98-99, 101-112, 114-124

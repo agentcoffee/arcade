@@ -43,6 +43,8 @@ class Sprite(BasicSprite, PymunkMixin):
             Show the image at this many times its original size.
         angle:
             The initial rotation of the sprite in degrees
+        visible:
+            Whether the sprite is drawn.
     """
 
     __slots__ = (
@@ -68,7 +70,7 @@ class Sprite(BasicSprite, PymunkMixin):
         center_x: float = 0.0,
         center_y: float = 0.0,
         angle: float = 0.0,
-        **kwargs: Any,
+        visible: bool = True,
     ) -> None:
         if isinstance(path_or_texture, Texture):
             _texture = path_or_texture
@@ -87,7 +89,7 @@ class Sprite(BasicSprite, PymunkMixin):
             scale=scale,
             center_x=center_x,
             center_y=center_y,
-            **kwargs,
+            visible=visible,
         )
         PymunkMixin.__init__(self)
 
@@ -95,7 +97,7 @@ class Sprite(BasicSprite, PymunkMixin):
         # Movement
         self._velocity = 0.0, 0.0
         self.change_angle: float = 0.0
-        """Change in angle per 1/60th of a second."""
+        """Change in angle, in degrees per frame at 60 FPS."""
 
         # Custom sprite properties
         self._properties: dict[str, Any] | None = None
@@ -105,28 +107,28 @@ class Sprite(BasicSprite, PymunkMixin):
         """
         :py:class:`~arcade.physics_engines.PhysicsEnginePlatformer`
         uses this as the left boundary for moving
-        :py:attr:`~arcade.physics_engines.PhysicsEnginePlatformer.platforms`.
+        :py:attr:`~arcade.PhysicsEnginePlatformer.platforms`.
         """
 
         self.boundary_right: float | None = None
         """
         :py:class:`~arcade.physics_engines.PhysicsEnginePlatformer`
         uses this as the right boundary for moving
-        :py:attr:`~arcade.physics_engines.PhysicsEnginePlatformer.platforms`.
+        :py:attr:`~arcade.PhysicsEnginePlatformer.platforms`.
         """
 
         self.boundary_top: float | None = None
         """
         :py:class:`~arcade.physics_engines.PhysicsEnginePlatformer`
         uses this as the top boundary for moving
-        :py:attr:`~arcade.physics_engines.PhysicsEnginePlatformer.platforms`.
+        :py:attr:`~arcade.PhysicsEnginePlatformer.platforms`.
         """
 
         self.boundary_bottom: float | None = None
         """
         :py:class:`~arcade.physics_engines.PhysicsEnginePlatformer`
         uses this as the top boundary for moving
-        :py:attr:`~arcade.physics_engines.PhysicsEnginePlatformer.platforms`.
+        :py:attr:`~arcade.PhysicsEnginePlatformer.platforms`.
         """
 
         self.cur_texture_index: int = 0
@@ -186,7 +188,8 @@ class Sprite(BasicSprite, PymunkMixin):
     @property
     def velocity(self) -> Point2:
         """
-        Get or set the velocity of the sprite.
+        Get or set the velocity of the sprite, in pixels per frame at 60 FPS.
+        For example, ``(5, 0)`` moves 300 pixels per second to the right.
 
         The x and y velocity can also be set separately using the
         ``sprite.change_x`` and ``sprite.change_y`` properties.
@@ -203,7 +206,7 @@ class Sprite(BasicSprite, PymunkMixin):
 
     @property
     def change_x(self) -> float:
-        """Get or set the velocity in the x plane of the sprite."""
+        """Get or set the x velocity, in pixels per frame at 60 FPS."""
         return self.velocity[0]
 
     @change_x.setter
@@ -212,7 +215,7 @@ class Sprite(BasicSprite, PymunkMixin):
 
     @property
     def change_y(self) -> float:
-        """Get or set the velocity in the y plane of the sprite."""
+        """Get or set the y velocity, in pixels per frame at 60 FPS."""
         return self.velocity[1]
 
     @change_y.setter
@@ -221,17 +224,27 @@ class Sprite(BasicSprite, PymunkMixin):
 
     @property
     def hit_box(self) -> HitBox:
-        """Get or set the hit box for this sprite."""
+        """
+        Get or set the hit box for this sprite.
+
+        The hit box's points are relative to the sprite's center, before
+        scaling and rotation. Setting it moves, scales and rotates the hit
+        box to match the sprite, so its own position, scale and angle
+        don't matter.
+        """
         return self._hit_box
 
     @hit_box.setter
     def hit_box(self, hit_box: HitBox | RotatableHitBox) -> None:
-        if type(hit_box) is HitBox:
-            self._hit_box = hit_box.create_rotatable(self.angle)
-        else:
-            # Mypy doesn't seem to understand the type check above
-            # It still thinks hit_box can be a union here
-            self._hit_box = hit_box  # type: ignore
+        if not isinstance(hit_box, RotatableHitBox):
+            hit_box = hit_box.create_rotatable(self.angle)
+        hit_box.position = self._position
+        hit_box.scale = self._scale
+        hit_box.angle = self.angle
+        self._hit_box = hit_box
+        self.update_spatial_hash()
+        for sprite_list in self.sprite_lists:
+            sprite_list._update_hit_box(self)
 
     @property
     def texture(self) -> Texture:
@@ -399,7 +412,11 @@ class Sprite(BasicSprite, PymunkMixin):
         """
         super().remove_from_sprite_lists()
         for engine in self.physics_engines:
-            engine.remove_sprite(self)
+            # Only some engines, such as PymunkPhysicsEngine, keep their own
+            # reference to the sprite. The others only use sprite lists.
+            remove_sprite = getattr(engine, "remove_sprite", None)
+            if remove_sprite is not None:
+                remove_sprite(self)
 
         self.physics_engines.clear()
 

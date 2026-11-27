@@ -40,6 +40,16 @@ API_DOC_GENERATION_DIR = SharedPaths.API_DOC_ROOT / "api"
 QUICK_INDEX_FILE_PATH = SharedPaths.API_DOC_ROOT / "quick_index.rst"
 IMPORT_TREE = build_import_tree(ARCADE_ROOT)
 
+# Problems found while generating the pages. Any of them fails the docs
+# build, so stale config can't go unnoticed.
+ERRORS: list[str] = []
+
+
+def error(message: str) -> None:
+    print(f"ERROR: {message}")
+    ERRORS.append(message)
+
+
 # --- 1. Special rules & excludes ---
 
 RULE_SHOW_INHERITANCE = (":show-inheritance:",)
@@ -64,11 +74,21 @@ API_FILE_TO_TITLE_AND_MODULES = {
         "title": "Types",
         "use_declarations_in": [
             "arcade.types",
-            "arcade.types.numbers",
             "arcade.types.vector_like",
             "arcade.types.color",
             "arcade.types.rect",
             "arcade.types.box",
+        ],
+        # Type aliases, which the parser below can't find
+        "data": [
+            "arcade.types.numbers.AsFloat",
+            "arcade.types.vector_like.Point",
+            "arcade.types.vector_like.Point2",
+            "arcade.types.vector_like.Point3",
+            "arcade.types.vector_like.Point2List",
+            "arcade.types.color.RGBA255",
+            "arcade.types.color.RGBOrA255",
+            "arcade.types.OneOrIterableOf",
         ],
     },
     "resources.rst": {
@@ -100,13 +120,11 @@ API_FILE_TO_TITLE_AND_MODULES = {
             "arcade.sprite.colored",
             "arcade.sprite.mixins",
             "arcade.sprite.animated",
-            "arcade.sprite.enums",
         ],
     },
     "sprite_list.rst": {
         "title": "Sprite Lists",
         "use_declarations_in": [
-            "arcade.sprite_list",
             "arcade.sprite_list.sprite_list",
             "arcade.sprite_list.spatial_hash",
             "arcade.sprite_list.collision",
@@ -125,7 +143,6 @@ API_FILE_TO_TITLE_AND_MODULES = {
     "texture.rst": {
         "title": "Texture Management",
         "use_declarations_in": [
-            "arcade.texture",
             "arcade.texture.texture",
             "arcade.texture.loading",
             "arcade.texture.generate",
@@ -151,7 +168,6 @@ API_FILE_TO_TITLE_AND_MODULES = {
     "texture_atlas.rst": {
         "title": "Texture Atlas",
         "use_declarations_in": [
-            "arcade.texture_atlas",
             "arcade.texture_atlas.base",
             "arcade.texture_atlas.atlas_default",
             "arcade.texture_atlas.region",
@@ -173,6 +189,15 @@ API_FILE_TO_TITLE_AND_MODULES = {
         "use_declarations_in": ["arcade.controller"],
     },
     "joysticks.rst": {"title": "Joystick", "use_declarations_in": ["arcade.joysticks"]},
+    "input.rst": {
+        "title": "Input Manager",
+        "use_declarations_in": [
+            "arcade.input.manager",
+            "arcade.input.input_mapping",
+            "arcade.input.inputs",
+            "arcade.input.raw_dicts",
+        ],
+    },
     "window.rst": {
         "title": "Window and View",
         "use_declarations_in": [
@@ -184,14 +209,15 @@ API_FILE_TO_TITLE_AND_MODULES = {
     },
     "sound.rst": {"title": "Sound", "use_declarations_in": ["arcade.sound"]},
     "path_finding.rst": {"title": "Pathfinding", "use_declarations_in": ["arcade.paths"]},
+    "hexagon.rst": {"title": "Hexagon Grids", "use_declarations_in": ["arcade.hexagon"]},
     "isometric.rst": {
         "title": "Isometric Map (incomplete)",
         "use_declarations_in": ["arcade.isometric"],
     },
-    "anim.rst": {"title": "Easing", "use_declarations_in": ["arcade.anim", "arcade.anim.easing"]},
+    "anim.rst": {"title": "Easing", "use_declarations_in": ["arcade.anim.easing"]},
     "utility.rst": {
         "title": "Misc Utility Functions",
-        "use_declarations_in": ["arcade", "arcade.__main__", "arcade.utils"],
+        "use_declarations_in": ["arcade", "arcade.utils"],
     },
     "drawing_batch.rst": {"title": "Shape Lists", "use_declarations_in": ["arcade.shape_list"]},
     "open_gl.rst": {"title": "OpenGL Context", "use_declarations_in": ["arcade.context"]},
@@ -200,7 +226,6 @@ API_FILE_TO_TITLE_AND_MODULES = {
     "gui.rst": {
         "title": "GUI",
         "use_declarations_in": [
-            "arcade.gui",
             "arcade.gui.constructs",
             "arcade.gui.mixins",
             "arcade.gui.surface",
@@ -231,6 +256,9 @@ API_FILE_TO_TITLE_AND_MODULES = {
     "gui_experimental.rst": {
         "title": "GUI Experimental Features",
         "use_declarations_in": [
+            "arcade.gui.experimental.animate",
+            "arcade.gui.experimental.transition",
+            "arcade.gui.experimental.group",
             "arcade.gui.experimental.password_input",
             "arcade.gui.experimental.scroll_area",
             "arcade.gui.experimental.typed_text_input",
@@ -271,6 +299,7 @@ API_FILE_TO_TITLE_AND_MODULES = {
         "use_declarations_in": [
             "arcade.future.light.lights",
             "arcade.future.video.video_player",
+            "arcade.future.texture_render_target",
         ],
     },
 }
@@ -344,10 +373,10 @@ def get_file_declarations(
                         parsed_values["*"].extend(parsed_raw)
 
                 except Exception as e:
-                    print(f"Exception processing {filename} on line {line_no}: {e}")
+                    error(f"Exception processing {filename} on line {line_no}: {e}")
                     break
     except Exception as e:
-        print(f"Failed to open {filepath}: {e}")
+        error(f"Failed to open {filepath}: {e}")
 
     return parsed_values
 
@@ -370,7 +399,7 @@ def generate_api_file(api_file_name: str, vfs: Vfs):
     page_config = API_FILE_TO_TITLE_AND_MODULES.get(api_file_name, None)
 
     if not page_config:
-        print(f"ERROR: No config defined for API file {api_file_name!r}")
+        error(f"No config defined for API file {api_file_name!r}")
         return
 
     try:
@@ -380,7 +409,7 @@ def generate_api_file(api_file_name: str, vfs: Vfs):
         # print(f"API filename {api_file_name} gets {title=} with {use_declarations_in=}")
 
     except Exception as e:
-        print(f"ERROR: Unintelligible config data for {api_file_name!r}: {e}")
+        error(f"Unintelligible config data for {api_file_name!r}: {e}")
         return
 
     # Open in "a" mode to append
@@ -393,8 +422,8 @@ def generate_api_file(api_file_name: str, vfs: Vfs):
     api_file = vfs.open(full_api_file_name, "w")
     api_file.write(f".. _{api_file_name[:-4]}_api:\n")
     # api_file.write(f".. py:module:: arcade\n")
-    api_file.write(f".. py:currentmodule:: arcade\n")
-    api_file.write(f"\n")
+    api_file.write(".. py:currentmodule:: arcade\n")
+    api_file.write("\n")
     api_file.write(f"{title}\n")
     api_file.write(f"{underline}\n\n")
 
@@ -419,9 +448,8 @@ def generate_api_file(api_file_name: str, vfs: Vfs):
     for module_name in use_declarations_in:
         # Did we ever have tests in the path name? What?
         if "test" in module_name:
-            print(
-                f"WARNING: {module_name!r} appears to contain tests."
-                f"Those belong in the 'tests/' directory!"
+            error(
+                f"{module_name!r} appears to contain tests. Those belong in the 'tests/' directory!"
             )
             continue
 
@@ -431,10 +459,10 @@ def generate_api_file(api_file_name: str, vfs: Vfs):
 
         # Skip a file if we got no imports
         if not len(member_lists["*"]):
-            print(
-                f"WARNING: No members parsed for {module_name!r} with"
-                f" inferred path {module_path!r}. Check & update your"
-                f"config?"
+            error(
+                f"No members parsed for {module_name!r} with inferred path"
+                f" {module_path!r}. Remove it from API_FILE_TO_TITLE_AND_MODULES"
+                f" if it only re-exports names."
             )
             continue
 
@@ -458,7 +486,7 @@ def generate_api_file(api_file_name: str, vfs: Vfs):
 
             # Write the entry to the file
             api_file.write(f".. autoclass:: {full_name}\n")
-            api_file.write(f"   :members:\n")
+            api_file.write("   :members:\n")
             # api_file.write(f"    :member-order: groupwise\n")
 
             # Apply special per-class addenda
@@ -483,6 +511,13 @@ def generate_api_file(api_file_name: str, vfs: Vfs):
             # text_file.write(f"     - {path_name}\n")
 
         api_file.close()
+
+    # Data such as type aliases, listed by name in the config
+    for full_name in page_config.get("data", EMPTY_TUPLE):
+        quick_index_file.write(f"   * - :py:data:`{full_name}`\n")
+        quick_index_file.write(f"     - {title}\n")
+
+        api_file.write(f".. autodata:: {full_name}\n\n")
 
 
 def main():
@@ -517,6 +552,11 @@ def main():
         generate_api_file(filename, vfs)
 
     vfs.write()
+
+    if ERRORS:
+        raise RuntimeError(
+            f"update_quick_index.py found {len(ERRORS)} problem(s):\n  " + "\n  ".join(ERRORS)
+        )
 
     print("Done creating quick_index.rst")
 

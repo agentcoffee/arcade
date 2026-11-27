@@ -19,7 +19,7 @@ Requirements
 ------------
 Arcade requires a desktop, laptop, or compatible Single-Board Computer (SBC) with:
 
-#. Python 3.9 or higher
+#. |min_py_fullname| or higher
 #. Graphics drivers with support for either:
     * OpenGL 3.3+
     * GLES 3.1+ with extensions on SBCs
@@ -30,7 +30,7 @@ unsupported.
 Windows, Linux, and Intel Mac
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Your computer can likely run Arcade if it supports Python 3.9 or higher.
+Your computer can likely run Arcade if it supports |min_py_fullname| or higher.
 
 In general, even older convertible Windows tablets will work as long as they:
 
@@ -68,7 +68,7 @@ can always :ref:`ask for help. <how-to-get-help>`.
 Raspberry Pi and Other ARM SBCs
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-The Arcade and :py:mod:`pyglet` teams have verified the Raspberry Pi 4 and 5
+The Arcade and pyglet teams have verified the Raspberry Pi 4 and 5
 as working. The Raspberry Pi 400 will also likely work, but other Pi models will not.
 
 To learn more, please see:

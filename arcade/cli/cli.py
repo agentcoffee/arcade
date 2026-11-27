@@ -1,6 +1,5 @@
 import argparse
 import sys
-from typing import Type
 
 from .commands import BaseCommand, InfoCommand
 
@@ -11,8 +10,9 @@ class CLI:
         self.prog: str = "arcade"
         self.description: str = "Arcade Game Library CLI"
 
-    def register_command(self, command_class: Type[BaseCommand]) -> None:
-        command = command_class()  # type: ignore BaseCommand has different constructor than it's implementations
+    def register_command(self, command_class: type[BaseCommand]) -> None:
+        # BaseCommand has a different constructor than its implementations
+        command = command_class()  # type: ignore[call-arg]
         self.commands[command.name] = command
 
     def create_parser(self) -> argparse.ArgumentParser:

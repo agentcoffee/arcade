@@ -27,11 +27,11 @@ Point3 = tuple[AsFloat, AsFloat, AsFloat] | Vec3
 #: * An ordinary :py:class:`tuple` of 2 or 3 values, either:
 #:
 #:   * :py:class:`int`
-#    * :py:class:`float`
+#:   * :py:class:`float`
 #:
-#: This works the same way as :py:attr:`arcade.types.RGBOrA255` to
+#: This works the same way as :py:data:`~arcade.types.color.RGBOrA255` to
 #: annotate RGB tuples, RGBA tuples, and :py:class:`tuple` or a
-#: :py:class:`Color` instances.
+#: :py:class:`~arcade.types.Color` instances.
 Point = Point2 | Point3
 
 PointList = Sequence[Point]
@@ -50,10 +50,10 @@ class AnchorPoint:
 
     Each is a :py:class:`~pyglet.math.Vec2` with axis values between
     ``0.0`` and ``1.0``. They can be used as arguments to
-    :py:meth:`Rect.uv_to_position <arcade.types.Rect.uv_to_position>`
+    :py:meth:`Rect.uv_to_position <arcade.Rect.uv_to_position>`
     to help calculate:
 
-    * a pixel offset inside a :py:class:`~arcade.types.Rect`
+    * a pixel offset inside a :py:class:`~arcade.Rect`
     * an absolute screen positions in pixels
 
     Advanced users may also find them useful when working with

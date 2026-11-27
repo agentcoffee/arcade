@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import weakref
-from ctypes import byref, string_at
+from ctypes import byref
 from typing import TYPE_CHECKING
 
 from pyglet.graphics import core
@@ -51,7 +51,8 @@ class OpenGLTextureArray(TextureArray):
     A texture can also be created with different datatypes such as
     float, integer or unsigned integer.
 
-    The best way to create a texture instance is through :py:meth:`arcade.gl.Context.texture`
+    The best way to create a texture instance is through
+    :py:meth:`arcade.gl.context.Context.texture`
 
     Supported ``dtype`` values are::
 
@@ -86,8 +87,6 @@ class OpenGLTextureArray(TextureArray):
             Wrap mode x
         wrap_y:
             Wrap mode y
-        target:
-            The texture type (Ignored. Legacy)
         depth:
             creates a depth texture if `True`
         samples:
@@ -200,6 +199,9 @@ class OpenGLTextureArray(TextureArray):
         self._texture_2d_array(None)
 
     def __del__(self):
+        # Creating the object can fail before the OpenGL object exists
+        if not hasattr(self, "_glo"):
+            return
         # Intercept garbage collection if we are using Context.gc()
         if self._ctx.gc_mode == "context_gc" and self._glo.value > 0:
             self._ctx.objects.append(self)
@@ -302,12 +304,10 @@ class OpenGLTextureArray(TextureArray):
                         )
             except gl.GLException as ex:
                 raise gl.GLException(
-                    (
-                        f"Unable to create texture: {ex} : dtype={self._dtype} "
-                        f"size={self.size} components={self._components} "
-                        f"MAX_TEXTURE_SIZE = {self.ctx.info.MAX_TEXTURE_SIZE}"
-                        f": {ex}"
-                    )
+                    f"Unable to create texture: {ex} : dtype={self._dtype} "
+                    f"size={self.size} components={self._components} "
+                    f"MAX_TEXTURE_SIZE = {self.ctx.info.MAX_TEXTURE_SIZE}"
+                    f": {ex}"
                 )
 
     @property
@@ -465,7 +465,9 @@ class OpenGLTextureArray(TextureArray):
                 * (self.width * self.height * self.layers * self._component_size * self._components)
             )()
             gl.glGetTexImage(self._target, level, self._format, self._type, buffer)
-            return string_at(buffer, len(buffer))
+            # bytes() rather than ctypes.string_at, which can't read 2 GB or more on
+            # Windows: its size is a C long
+            return bytes(buffer)
         elif self._ctx.gl_api == "opengles":
             # FIXME: Check if we can attach a layer to the framebuffer. See Texture2D.read()
             raise ValueError("Reading texture array data not supported in GLES yet")
@@ -476,7 +478,7 @@ class OpenGLTextureArray(TextureArray):
         """Write byte data into layers of the texture.
 
         The ``data`` value can be either an
-        :py:class:`arcade.gl.Buffer` or anything that implements the
+        :py:class:`arcade.gl.buffer.Buffer` or anything that implements the
         `Buffer Protocol <https://docs.python.org/3/c-api/buffer.html>`_.
 
         The latter category includes ``bytes``, ``bytearray``,
@@ -487,7 +489,7 @@ class OpenGLTextureArray(TextureArray):
 
         Args:
             data:
-                :class:`~arcade.gl.Buffer` or buffer protocol object with data to write.
+                :class:`~arcade.gl.buffer.Buffer` or buffer protocol object with data to write.
             level:
                 The texture level to write (LoD level, now layer)
             viewport:
@@ -592,7 +594,7 @@ class OpenGLTextureArray(TextureArray):
         self._glo.value = 0
 
     @staticmethod
-    def delete_glo(ctx: "Context", glo: gl.GLuint):
+    def delete_glo(ctx: Context, glo: gl.GLuint):
         """
         Destroy the texture.
 
@@ -692,6 +694,7 @@ class OpenGLTextureArray(TextureArray):
         return handle
 
     def __repr__(self) -> str:
-        return "<TextureArray glo={} size={}x{}x{} components={}>".format(
-            self._glo.value, self._width, self._layers, self._height, self._components
+        return (
+            f"<TextureArray glo={self._glo.value} "
+            f"size={self._width}x{self._layers}x{self._height} components={self._components}>"
         )
